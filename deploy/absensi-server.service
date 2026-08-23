@@ -1,0 +1,33 @@
+# Alternatif deployment TANPA Docker — jalankan langsung via systemd.
+# Salin file ini ke /etc/systemd/system/absensi-server.service
+#
+# Setup:
+#   sudo cp deploy/absensi-server.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable absensi-server
+#   sudo systemctl start absensi-server
+#   sudo systemctl status absensi-server    # cek status
+#   sudo journalctl -u absensi-server -f    # lihat log realtime
+
+[Unit]
+Description=Server API Absensi Face Recognition
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=absensi
+Group=absensi
+WorkingDirectory=/opt/absensi-server
+EnvironmentFile=/opt/absensi-server/.env
+ExecStart=/opt/absensi-server/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2
+Restart=always
+RestartSec=5
+
+# Batasi akses filesystem untuk keamanan (service tidak butuh akses ke luar workdir)
+ProtectSystem=strict
+ReadWritePaths=/opt/absensi-server
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
