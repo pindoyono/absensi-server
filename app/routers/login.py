@@ -4,9 +4,20 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Guru
 from app.schemas import GoogleLoginRequest, LoginResponse
-from app.auth import verify_google_id_token, issue_internal_jwt
+from app.auth import verify_google_id_token, issue_internal_jwt, get_current_guru
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.get("/me")
+def read_me(current_user: Guru = Depends(get_current_guru)):
+    """Profil user yang sedang login (dari JWT internal)."""
+    return {
+        "id": current_user.id,
+        "nama": current_user.nama,
+        "email": current_user.email,
+        "role": current_user.role,
+    }
 
 
 @router.post("/login/google", response_model=LoginResponse)

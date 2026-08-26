@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, date as date_cls
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy import select
@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Absensi, Device
+from app.models import Absensi, Device, Dispensasi, JadwalStandar, JadwalOverride
 from app.schemas import (
     SyncRequest, SyncResponse, SyncResultItem,
     ApprovalRequest,
@@ -16,6 +16,8 @@ from app.models import Guru
 from app.routers.device import verify_api_key
 
 router = APIRouter(prefix="/absensi", tags=["absensi"])
+
+BATAS_AWAL_MASUK_JAM = 2  # absen masuk dibuka 2 jam sebelum jam masuk standar
 
 
 def _verify_device(db: Session, device_id: str, x_device_api_key: str | None) -> Device:
@@ -34,6 +36,71 @@ def _verify_device(db: Session, device_id: str, x_device_api_key: str | None) ->
 
     device.last_seen_at = datetime.utcnow()
     return device
+
+
+def _ambil_jadwal_efektif(db: Session, kelas: str | None, tanggal) -> dict | None:
+    """Ambil jam masuk/pulang untuk kelas pada tanggal tertentu.
+    Cek override dulu, lalu fallback ke jadwal standar.
+    Return dict {jam_masuk: time, jam_pulang: time} atau None kalau tidak ada jadwal."""
+    if isinstance(tanggal, datetime):
+        tanggal = tanggal.date()
+    hari_nama = ["SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", None, None][tanggal.weekday()]
+
+    override = (
+        db.query(JadwalOverride)
+        .filter(JadwalOverride.tanggal == tanggal)
+        .filter((JadwalOverride.kelas == kelas) | (JadwalOverride.kelas.is_(None)))
+        .order_by(JadwalOverride.kelas.desc().nullslast())
+        .first()
+    )
+    if override and override.jam_masuk and override.jam_pulang:
+        return {"jam_masuk": override.jam_masuk, "jam_pulang": override.jam_pulang}
+
+    if not hari_nama:
+        return None  # weekend / bukan hari sekolah
+
+    standar = (
+        db.query(JadwalStandar)
+        .filter(JadwalStandar.hari == hari_nama)
+        .filter((JadwalStandar.kelas == kelas) | (JadwalStandar.kelas.is_(None)))
+        .order_by(JadwalStandar.kelas.desc().nullslast())
+        .first()
+    )
+    if not standar:
+        return None
+
+    return {"jam_masuk": standar.jam_masuk, "jam_pulang": standar.jam_pulang}
+
+
+def _validasi_jendela_waktu(db: Session, rec, jadwal_efektif: dict) -> str | None:
+    """Validasi jendela waktu absen. Return None kalau valid,
+    atau pesan alasan penolakan (status "ditolak_kebijakan")."""
+    jam_masuk = jadwal_efektif["jam_masuk"]
+    jam_pulang = jadwal_efektif["jam_pulang"]
+    waktu_aktual = rec.jam_aktual.time()
+
+    if rec.type == "MASUK":
+        earliest = (
+            datetime.combine(rec.tanggal, jam_masuk)
+            - timedelta(hours=BATAS_AWAL_MASUK_JAM)
+        ).time()
+        if waktu_aktual < earliest:
+            return f"Absen masuk belum dibuka (mulai {earliest.strftime('%H:%M')})"
+
+    if rec.type == "PULANG" and waktu_aktual < jam_pulang:
+        ada_dispensasi = db.query(Dispensasi).filter(
+            Dispensasi.siswa_id == rec.siswa_id,
+            Dispensasi.tanggal == rec.tanggal,
+            Dispensasi.jenis == "PULANG_CEPAT",
+        ).first()
+        if not ada_dispensasi:
+            return (
+                f"Belum waktunya pulang (mulai {jam_pulang.strftime('%H:%M')}), "
+                f"tidak ada dispensasi"
+            )
+
+    return None
+
 
 
 @router.post("/sync", response_model=SyncResponse)
@@ -78,6 +145,20 @@ def sync_absensi(
                 ))
                 duplikat += 1
                 continue
+
+            # Validasi jendela waktu (server sebagai wasit akhir)
+            # Client menolak lebih awal, tapi server tetap validasi ulang.
+            jadwal_efektif = _ambil_jadwal_efektif(db, None, rec.tanggal)
+            if jadwal_efektif:
+                penolakan = _validasi_jendela_waktu(db, rec, jadwal_efektif)
+                if penolakan:
+                    savepoint.rollback()
+                    hasil.append(SyncResultItem(
+                        record_id=rec.record_id,
+                        status="ditolak_kebijakan",
+                        pesan=penolakan,
+                    ))
+                    continue
 
             row = Absensi(
                 record_id=rec.record_id,

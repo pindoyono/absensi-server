@@ -158,6 +158,7 @@ Response:
 | `disimpan` | Tandai record lokal `synced = true` |
 | `duplikat_diabaikan` | Tandai juga `synced = true` — JANGAN retry lagi, ini bukan error |
 | `gagal` | Biarkan `synced = false`, akan dicoba ulang di siklus sync berikutnya |
+| `ditolak_kebijakan` | Jangan simpan lokal, jangan retry — absen ditolak server karena di luar jendela waktu (misal absen masuk jam 04:00 padahal baru buka 05:00, atau pulang cepat tanpa dispensasi). Tampilkan pesan ke siswa. |
 
 ✅ **Sudah diuji end-to-end lewat HTTP asli**: kirim MASUK pertama → `disimpan`. Kirim MASUK kedua untuk siswa & tanggal sama dengan `record_id` berbeda → otomatis `duplikat_diabaikan`. Ini membuktikan aturan "maksimal 2 record per hari" ditegakkan oleh server, bukan cuma diasumsikan benar dari sisi client.
 
@@ -179,6 +180,80 @@ Response memberi jam masuk/pulang yang berlaku HARI INI (sudah menghitung overri
 Client harus:
 1. Tarik & cache jadwal ini secara berkala (idealnya tiap sync sukses), simpan ke SQLite lokal.
 2. Saat offline, pakai jadwal yang di-cache terakhir untuk menghitung `status_kehadiran_otomatis` (`TERLAMBAT` kalau jam_aktual > jam_masuk + toleransi, dst).
+
+---
+
+## 5b. Dispensasi (Izin Pulang Cepat)
+
+Dispensasi adalah **izin di muka** yang diberikan guru piket **sebelum** siswa absen pulang. Berbeda dengan `status_kehadiran_final` (approve sesudah absen), dispensasi memungkinkan siswa absen PULANG sebelum jam pulang standar.
+
+### 5b.1 Buat / Update Dispensasi
+
+```
+POST /dispensasi
+Authorization: Bearer <JWT admin atau guru_piket>
+Content-Type: application/json
+
+{
+  "siswa_id": 1,
+  "tanggal": "2026-08-25",
+  "jenis": "PULANG_CEPAT",
+  "kategori": "SAKIT",
+  "alasan": "Demam tinggi, izin pulang ke rumah sakit"
+}
+```
+
+Response (200 OK):
+
+```json
+{
+  "id": 12,
+  "siswa_id": 1,
+  "tanggal": "2026-08-25",
+  "jenis": "PULANG_CEPAT",
+  "kategori": "SAKIT",
+  "alasan": "Demam tinggi, izin pulang ke rumah sakit",
+  "dibuat_oleh": 3
+}
+```
+
+**Catatan:** `UNIQUE (siswa_id, tanggal, jenis)` — 1 siswa cuma bisa punya 1 dispensasi PULANG_CEPAT per hari. Kalau sudah ada, field-nya diupdate (upsert).
+
+### 5b.2 Tarik Dispensasi Aktif (untuk Sync Client)
+
+```
+GET /dispensasi/aktif?tanggal=2026-08-25
+Authorization: Bearer <JWT guru>
+```
+
+Response:
+
+```json
+[
+  {
+    "id": 12,
+    "siswa_id": 1,
+    "tanggal": "2026-08-25",
+    "jenis": "PULANG_CEPAT",
+    "kategori": "SAKIT",
+    "alasan": "Demam tinggi, izin pulang ke rumah sakit",
+    "dibuat_oleh": 3
+  }
+]
+```
+
+Client harus:
+1. Panggil endpoint ini tiap siklus sync (mirip jadwal), simpan ke cache lokal `dispensasi_cache`.
+2. Saat offline, cek cache lokal sebelum menolak absen PULANG sebelum jam pulang standar.
+
+### 5b.3 Batalkan Dispensasi
+
+```
+DELETE /dispensasi/{dispensasi_id}
+Authorization: Bearer <JWT admin atau guru_piket>
+```
+
+Response: `{"status": "dibatalkan"}`
 
 ---
 
@@ -213,6 +288,7 @@ Setup device (sekali):
 Startup / berkala saat online:
   2. GET /jadwal/efektif → cache jadwal lokal
   3. GET /embeddings/sync?diperbarui_sejak=... → update cache embedding lokal
+  4. GET /dispensasi/aktif?tanggal=hari-ini → update cache dispensasi lokal
 
 Saat siswa scan wajah:
   4. Capture wajah → liveness check → cari embedding cocok dari cache lokal

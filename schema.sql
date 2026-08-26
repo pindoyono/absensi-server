@@ -125,6 +125,23 @@ CREATE INDEX idx_absensi_perlu_verifikasi
     WHERE status_kehadiran_final IS NULL AND status_kehadiran_otomatis != 'NORMAL';
 
 -- ------------------------------------------------------------
+-- Dispensasi — izin di muka dari guru piket sebelum siswa absen pulang
+-- (misal: siswa izin pulang cepat karena sakit/kegiatan)
+-- ------------------------------------------------------------
+CREATE TABLE dispensasi (
+    id SERIAL PRIMARY KEY,
+    siswa_id INT NOT NULL REFERENCES siswa(id),
+    tanggal DATE NOT NULL,
+    jenis VARCHAR(20) NOT NULL CHECK (jenis IN ('PULANG_CEPAT')),
+    kategori VARCHAR(20) NOT NULL DEFAULT 'IZIN',
+        -- IZIN | SAKIT | DISPENSASI_KEGIATAN | LAINNYA
+    alasan TEXT,
+    dibuat_oleh INT NOT NULL REFERENCES guru(id),
+    dibuat_pada TIMESTAMP DEFAULT now(),
+    UNIQUE (siswa_id, tanggal, jenis)
+);
+
+-- ------------------------------------------------------------
 -- Log sinkronisasi per device (opsional, untuk audit/troubleshooting)
 -- ------------------------------------------------------------
 CREATE TABLE sync_log (

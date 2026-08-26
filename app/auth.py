@@ -24,7 +24,8 @@ def verify_google_id_token(google_token: str) -> dict:
         info = google_id_token.verify_oauth2_token(
             google_token, google_requests.Request(), settings.google_client_id
         )
-    except ValueError:
+    except Exception as e:
+        print(f'DEBUG: Google token verification failed: {e}')
         raise HTTPException(status_code=401, detail="Token Google tidak valid")
 
     email = info.get("email", "")
@@ -33,10 +34,13 @@ def verify_google_id_token(google_token: str) -> dict:
     if not email_verified:
         raise HTTPException(status_code=401, detail="Email Google belum terverifikasi")
 
-    if not email.endswith(f"@{settings.allowed_email_domain}"):
+    email_domain = email.rsplit("@", 1)[-1].lower()
+    if email_domain not in settings.allowed_email_domain_list:
         raise HTTPException(
             status_code=403,
-            detail=f"Hanya akun @{settings.allowed_email_domain} yang diizinkan login",
+            detail="Hanya akun "
+            + ", ".join(f"@{d}" for d in settings.allowed_email_domain_list)
+            + " yang diizinkan login",
         )
 
     return info

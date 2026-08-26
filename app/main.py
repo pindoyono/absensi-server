@@ -1,6 +1,7 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import login, absensi, siswa, jadwal, laporan, device, embeddings
+from app.routers import login, absensi, siswa, jadwal, laporan, device, embeddings, guru, dispensasi
 
 app = FastAPI(
     title="API Absensi Face Recognition",
@@ -11,6 +12,14 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://front.smkn2malinau.sch.id", "https://absen.smkn2malinau.sch.id"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(login.router)
 app.include_router(absensi.router)
 app.include_router(siswa.router)
@@ -18,6 +27,8 @@ app.include_router(jadwal.router)
 app.include_router(laporan.router)
 app.include_router(device.router)
 app.include_router(embeddings.router)
+app.include_router(guru.router)
+app.include_router(dispensasi.router)
 
 
 @app.get("/health")

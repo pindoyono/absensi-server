@@ -5,6 +5,10 @@ from typing import Optional, Literal
 from pydantic import BaseModel
 
 
+class PasswordLoginRequest(BaseModel):
+    username: str
+    password: str
+
 class GoogleLoginRequest(BaseModel):
     google_id_token: str
 
@@ -34,7 +38,7 @@ class SyncRequest(BaseModel):
 
 class SyncResultItem(BaseModel):
     record_id: uuid.UUID
-    status: Literal["disimpan", "duplikat_diabaikan", "gagal"]
+    status: Literal["disimpan", "duplikat_diabaikan", "gagal", "ditolak_kebijakan"]
     pesan: Optional[str] = None
 
 

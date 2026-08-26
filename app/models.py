@@ -115,3 +115,21 @@ class Absensi(Base):
     approved_at = Column(DateTime)
 
     synced_at = Column(DateTime, server_default=func.now())
+
+
+class Dispensasi(Base):
+    """Izin di muka yang diberikan guru piket sebelum siswa absen pulang.
+    Misal: siswa izin pulang cepat hari X, maka saat sync PULANG sebelum
+    jam_pulang_standar, server menerima record ini."""
+    __tablename__ = "dispensasi"
+    __table_args__ = (UniqueConstraint("siswa_id", "tanggal", "jenis"),)
+
+    id = Column(Integer, primary_key=True)
+    siswa_id = Column(Integer, ForeignKey("siswa.id"), nullable=False)
+    tanggal = Column(Date, nullable=False)
+    jenis = Column(String(20), nullable=False, default="PULANG_CEPAT")
+    kategori = Column(String(20), nullable=False, default="IZIN")
+    # IZIN | SAKIT | DISPENSASI_KEGIATAN | LAINNYA
+    alasan = Column(Text)
+    dibuat_oleh = Column(Integer, ForeignKey("guru.id"), nullable=False)
+    dibuat_pada = Column(DateTime, server_default=func.now())

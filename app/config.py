@@ -4,9 +4,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     database_url: str = "postgresql://user:password@localhost:5432/absensi"
 
-    # Domain email Google Workspace sekolah — hanya email domain ini yang
-    # boleh login sebagai guru/admin. Ganti sesuai domain sekolah.
-    allowed_email_domain: str = "smkxxx.sch.id"
+    # Domain email Google Workspace sekolah yang boleh login sebagai guru/admin.
+    # Bisa lebih dari satu domain, dipisah koma. Ganti sesuai domain sekolah.
+    allowed_email_domains: str = "smkxxx.sch.id"
 
     # Dipakai untuk terbitkan & verifikasi JWT internal setelah login Google berhasil
     jwt_secret: str = "GANTI_DENGAN_SECRET_ACAK_YANG_PANJANG"
@@ -24,6 +24,16 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
+
+    @property
+    def allowed_email_domain_list(self) -> list[str]:
+        """Parse daftar domain dari env: dipisah koma, tanpa spasi/@."""
+        return [
+            d.strip().lstrip("@").lower()
+            for d in self.allowed_email_domains.split(",")
+            if d.strip()
+        ]
 
 
 settings = Settings()
