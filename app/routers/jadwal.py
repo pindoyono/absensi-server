@@ -84,6 +84,36 @@ def create_jadwal_override(
     db.refresh(row)
     return row
 
+@router.put("/override/{override_id}")
+def update_jadwal_override(
+    override_id: int,
+    body: JadwalOverrideIn,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin", "guru_piket")),
+):
+    row = db.query(JadwalOverride).filter(JadwalOverride.id == override_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Jadwal override tidak ditemukan")
+    for k, v in body.model_dump().items():
+        setattr(row, k, v)
+    row.dibuat_oleh = guru.id
+    db.commit()
+    db.refresh(row)
+    return row
+
+@router.delete("/override/{override_id}")
+def delete_jadwal_override(
+    override_id: int,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin", "guru_piket")),
+):
+    row = db.query(JadwalOverride).filter(JadwalOverride.id == override_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Jadwal override tidak ditemukan")
+    db.delete(row)
+    db.commit()
+    return {"status": "ok"}
+
 
 @router.get("/efektif")
 def jadwal_efektif_hari_ini(

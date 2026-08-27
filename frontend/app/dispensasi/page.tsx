@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { format, startOfWeek, addDays } from "date-fns";
+import { format } from "date-fns";
+import { Button, Badge, Skeleton } from "@/components/ui/Base";
 
 const API_BASE = "https://absen.smkn2malinau.sch.id";
 
@@ -80,6 +81,11 @@ export default function DispensasiPage() {
             const res = await fetch(`${API_BASE}/dispensasi/aktif?tanggal=${tanggal}`, {
                 headers: { Authorization: `Bearer ${t}` },
             });
+            if (res.status === 401 || res.status === 403) {
+                localStorage.removeItem("token");
+                window.location.href = "/login";
+                return;
+            }
             if (!res.ok) throw new Error("Gagal memuat dispensasi");
             const data = await res.json();
             setDispensasiList(data);
@@ -185,118 +191,128 @@ export default function DispensasiPage() {
         return s ? s.label.split(" - ")[1] : "Siswa";
     };
 
-    if (loading) return <div className="p-4 text-white">Loading...</div>;
+    if (loading) return (
+        <div className="space-y-4">
+            <Skeleton className="h-8 w-48 mb-6" />
+            <Skeleton className="h-12 w-full mb-2" />
+            <Skeleton className="h-12 w-full mb-2" />
+            <Skeleton className="h-12 w-full" />
+        </div>
+    );
 
     if (error && dispensasiList.length === 0) {
         return (
-            <div className="p-4 bg-red-800 text-white rounded">
-                <h3 className="font-bold">Gagal memuat data</h3>
-                <p>{error}</p>
-                <button
-                    onClick={() => window.location.reload()}
-                    className="mt-4 bg-white text-red-800 px-4 py-2 rounded font-bold hover:bg-gray-200"
-                >
-                    Coba Lagi
-                </button>
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-6 text-center">
+                <h3 className="font-bold text-rose-700">Gagal memuat data</h3>
+                <p className="text-rose-600 text-sm mt-1">{error}</p>
+                <div className="mt-4">
+                    <Button onClick={() => window.location.reload()} variant="secondary">Coba Lagi</Button>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="bg-white p-6 rounded shadow text-gray-800">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold">Manajemen Dispensasi</h2>
-                <button
-                    onClick={openCreate}
-                    className="bg-blue-600 text-white px-4 py-2 rounded font-semibold hover:bg-blue-700"
-                >
-                    + Buat Dispensasi
-                </button>
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-900">Manajemen Dispensasi</h1>
+                    <p className="text-sm text-slate-500">Kelola pengajuan izin & dispensasi siswa</p>
+                </div>
+                <Button onClick={openCreate}>+ Buat Dispensasi</Button>
             </div>
 
             {error && (
-                <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">{error}</div>
+                <div className="p-3 bg-rose-50 text-rose-700 rounded-lg border border-rose-200 text-sm">{error}</div>
             )}
 
-            <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Tanggal</label>
-                <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+            <div className="flex items-center gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Tanggal</label>
+                    <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                </div>
             </div>
 
-            <table className="min-w-full bg-white border">
-                <thead>
-                    <tr className="bg-gray-100">
-                        <th className="py-2 px-4 border-b text-left">Siswa</th>
-                        <th className="py-2 px-4 border-b text-left">Kelas</th>
-                        <th className="py-2 px-4 border-b text-left">Kategori</th>
-                        <th className="py-2 px-4 border-b text-left">Alasan</th>
-                        <th className="py-2 px-4 border-b text-center">Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {dispensasiList.length === 0 ? (
-                        <tr>
-                            <td colSpan={5} className="py-4 text-center text-gray-500">
-                                Tidak ada dispensasi untuk tanggal ini.
-                            </td>
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <table className="min-w-full text-sm">
+                    <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">
+                            <th className="py-3 px-4 text-left">Siswa</th>
+                            <th className="py-3 px-4 text-left">Kelas</th>
+                            <th className="py-3 px-4 text-left">Kategori</th>
+                            <th className="py-3 px-4 text-left">Alasan</th>
+                            <th className="py-3 px-4 text-center">Aksi</th>
                         </tr>
-                    ) : (
-                        dispensasiList.map((d) => {
-                            const kat = KATEGORI_OPTIONS.find(k => k.value === d.kategori);
-                            return (
-                                <tr key={d.id} className="border-b">
-                                    <td className="py-2 px-4">{getSiswaName(d.siswa_id)}</td>
-                                    <td className="py-2 px-4">
-                                        {siswaList.find(o => o.value === d.siswa_id)?.label.split(" (")[1]?.replace(")", "") || "-"}
-                                    </td>
-                                    <td className="py-2 px-4">
-                                        <span className={`px-2 py-1 rounded text-xs font-semibold ${kat?.color || "bg-gray-100 text-gray-700"}`}>
-                                            {kat?.label || d.kategori}
-                                        </span>
-                                    </td>
-                                    <td className="py-2 px-4">{d.alasan || "-"}</td>
-                                    <td className="py-2 px-4 text-center">
-                                        <button
-                                            onClick={() => handleDelete(d.id, getSiswaName(d.siswa_id))}
-                                            disabled={deletingId === d.id}
-                                            className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 disabled:opacity-50"
-                                        >
-                                            {deletingId === d.id ? "..." : "Hapus"}
-                                        </button>
-                                    </td>
-                                </tr>
-                            );
-                        })
-                    )}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {dispensasiList.length === 0 ? (
+                            <tr>
+                                <td colSpan={5} className="py-8 text-center text-slate-500">
+                                    <p className="font-medium">Tidak ada dispensasi untuk tanggal ini</p>
+                                    <p className="text-xs mt-1">Pilih tanggal lain atau buat dispensasi baru</p>
+                                </td>
+                            </tr>
+                        ) : (
+                            dispensasiList.map((d) => {
+                                const siswaInfo = siswaList.find(o => o.value === d.siswa_id);
+                                const nama = siswaInfo?.label.split(" - ")[1]?.split(" (")[0] || "Siswa";
+                                const kelas = siswaInfo?.label.split("(")[1]?.replace(")", "") || "-";
+                                const kat = KATEGORI_OPTIONS.find(k => k.value === d.kategori);
+                                return (
+                                    <tr key={d.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
+                                        <td className="py-3 px-4 font-medium text-slate-800">{nama}</td>
+                                        <td className="py-3 px-4 text-slate-600">{kelas}</td>
+                                        <td className="py-3 px-4">
+                                            <Badge variant={kat?.value === "SAKIT" ? "danger" : kat?.value === "DISPENSASI_KEGIATAN" ? "success" : "default"}>
+                                                {kat?.label || d.kategori}
+                                            </Badge>
+                                        </td>
+                                        <td className="py-3 px-4 text-slate-600">{d.alasan || "-"}</td>
+                                        <td className="py-3 px-4 text-center">
+                                            <Button
+                                                onClick={() => handleDelete(d.id, nama)}
+                                                disabled={deletingId === d.id}
+                                                variant="danger"
+                                                isLoading={deletingId === d.id}
+                                                className="text-xs px-2 py-1"
+                                            >
+                                                {deletingId === d.id ? "" : "Hapus"}
+                                            </Button>
+                                        </td>
+                                    </tr>
+                                );
+                            })
+                        )}
+                    </tbody>
+                </table>
+            </div>
 
-            {/* Modal Tambah/Edit */}
+            {/* Modal Tambah */}
             {modalOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-                        <h3 className="text-xl font-bold mb-4">
-                            {editingId ? "Edit Dispensasi" : "Buat Dispensasi"}
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 border border-slate-200">
+                        <h3 className="text-xl font-bold mb-4 text-slate-900">
+                            Buat Dispensasi
                         </h3>
 
                         {formError && (
-                            <div className="mb-4 p-3 bg-red-100 text-red-700 rounded text-sm">
+                            <div className="mb-4 p-3 bg-rose-50 text-rose-700 rounded-lg border border-rose-200 text-sm">
                                 {formError}
                             </div>
                         )}
 
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium mb-1">Siswa</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Siswa</label>
                                 <select
                                     value={form.siswa_id}
                                     onChange={(e) => setForm({ ...form, siswa_id: parseInt(e.target.value) })}
-                                    className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                 >
                                     <option value={0}>-- Pilih Siswa --</option>
                                     {siswaList.map((s) => (
@@ -308,21 +324,21 @@ export default function DispensasiPage() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-1">Tanggal</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Tanggal</label>
                                 <input
                                     type="date"
                                     value={form.tanggal}
                                     onChange={(e) => setForm({ ...form, tanggal: e.target.value })}
-                                    className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-1">Kategori</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Kategori</label>
                                 <select
                                     value={form.kategori}
                                     onChange={(e) => setForm({ ...form, kategori: e.target.value as any })}
-                                    className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                 >
                                     {KATEGORI_OPTIONS.map((k) => (
                                         <option key={k.value} value={k.value}>
@@ -333,32 +349,22 @@ export default function DispensasiPage() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-1">Alasan</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Alasan</label>
                                 <textarea
                                     value={form.alasan}
                                     onChange={(e) => setForm({ ...form, alasan: e.target.value })}
-                                    className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                     rows={3}
-                                    placeholder="Misal: Sakit, kegiatan scholastic, dll..."
+                                    placeholder="Misal: Sakit, kegiatan sekolah, dll..."
                                 />
                             </div>
                         </div>
 
                         <div className="mt-6 flex justify-end space-x-3">
-                            <button
-                                onClick={() => setModalOpen(false)}
-                                className="px-4 py-2 rounded border text-gray-700 hover:bg-gray-100"
-                                disabled={saving}
-                            >
-                                Batal
-                            </button>
-                            <button
-                                onClick={handleSave}
-                                disabled={saving}
-                                className="bg-blue-600 text-white px-4 py-2 rounded font-semibold hover:bg-blue-700 disabled:opacity-50"
-                            >
-                                {saving ? "Menyimpan..." : editingId ? "Simpan" : "Buat"}
-                            </button>
+                            <Button variant="ghost" onClick={() => setModalOpen(false)} disabled={saving}>Batal</Button>
+                            <Button onClick={handleSave} isLoading={saving}>
+                                {saving ? "Menyimpan..." : "Buat Dispensasi"}
+                            </Button>
                         </div>
                     </div>
                 </div>

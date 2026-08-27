@@ -30,7 +30,10 @@ class Siswa(Base):
     nis = Column(String(20), unique=True, nullable=False)
     nama = Column(String(100), nullable=False)
     kelas = Column(String(20), nullable=False)
-    jurusan = Column(String(50), default="Teknik Elektronika")
+    # Normalisasi: jurusan string lama dipertahankan utk backward-compat,
+    # konsentrasi_id adalah FK ke tabel konsentrasi_keahlian (sumber kebenaran baru).
+    jurusan = Column(String(150), default="Teknik Elektronika")
+    konsentrasi_id = Column(Integer, ForeignKey("konsentrasi_keahlian.id"))
     enrolled = Column(Boolean, default=False)
     tanggal_enrollment = Column(Date)
     enrolled_oleh = Column(Integer, ForeignKey("guru.id"))
@@ -38,6 +41,7 @@ class Siswa(Base):
     dibuat_pada = Column(DateTime, server_default=func.now())
 
     face_embedding = relationship("FaceEmbedding", back_populates="siswa", uselist=False)
+    konsentrasi = relationship("KonsentrasiKeahlian")
 
 
 class FaceEmbedding(Base):
@@ -133,3 +137,50 @@ class Dispensasi(Base):
     alasan = Column(Text)
     dibuat_oleh = Column(Integer, ForeignKey("guru.id"), nullable=False)
     dibuat_pada = Column(DateTime, server_default=func.now())
+
+
+# ============================================================
+# Spektrum Keahlian (Kepmendikbudristek No. 244/M/2024)
+# Normalisasi 3 level: Bidang -> Program -> Konsentrasi
+# ============================================================
+
+class BidangKeahlian(Base):
+    """Level 1: Bidang Keahlian (mis. 'Teknologi Informasi')"""
+    __tablename__ = "bidang_keahlian"
+
+    id = Column(Integer, primary_key=True)
+    nama = Column(String(100), unique=True, nullable=False)
+    kode = Column(String(10), unique=True, nullable=False)  # mis. '4'
+    dibuat_pada = Column(DateTime, server_default=func.now())
+
+    program_keahlian = relationship("ProgramKeahlian", back_populates="bidang", cascade="all, delete-orphan")
+
+
+class ProgramKeahlian(Base):
+    """Level 2: Program Keahlian (mis. 'Pengembangan Perangkat Lunak dan Gim')"""
+    __tablename__ = "program_keahlian"
+    __table_args__ = (UniqueConstraint("bidang_id", "nama"),)
+
+    id = Column(Integer, primary_key=True)
+    bidang_id = Column(Integer, ForeignKey("bidang_keahlian.id", ondelete="CASCADE"), nullable=False)
+    nama = Column(String(150), nullable=False)
+    kode = Column(String(10), nullable=False)  # mis. '4.1'
+    dibuat_pada = Column(DateTime, server_default=func.now())
+
+    bidang = relationship("BidangKeahlian", back_populates="program_keahlian")
+    konsentrasi_keahlian = relationship("KonsentrasiKeahlian", back_populates="program", cascade="all, delete-orphan")
+
+
+class KonsentrasiKeahlian(Base):
+    """Level 3: Konsentrasi Keahlian (mis. 'Rekayasa Perangkat Lunak')"""
+    __tablename__ = "konsentrasi_keahlian"
+    __table_args__ = (UniqueConstraint("program_id", "nama"),)
+
+    id = Column(Integer, primary_key=True)
+    program_id = Column(Integer, ForeignKey("program_keahlian.id", ondelete="CASCADE"), nullable=False)
+    nama = Column(String(150), nullable=False)
+    kode = Column(String(10), nullable=False)  # mis. '4.1.1'
+    durasi_tahun = Column(Integer, default=3)  # 3 atau 4 tahun
+    dibuat_pada = Column(DateTime, server_default=func.now())
+
+    program = relationship("ProgramKeahlian", back_populates="konsentrasi_keahlian")

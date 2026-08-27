@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Absensi, Device, Dispensasi, JadwalStandar, JadwalOverride
+from app.models import Absensi, Device, Dispensasi, JadwalStandar, JadwalOverride, Siswa
 from app.schemas import (
     SyncRequest, SyncResponse, SyncResultItem,
     ApprovalRequest,
@@ -148,7 +148,11 @@ def sync_absensi(
 
             # Validasi jendela waktu (server sebagai wasit akhir)
             # Client menolak lebih awal, tapi server tetap validasi ulang.
-            jadwal_efektif = _ambil_jadwal_efektif(db, None, rec.tanggal)
+            # PENTING: ambil kelas siswa yang SEBENARNYA -- jadwal bisa
+            # berbeda per kelas (lihat JadwalStandar/JadwalOverride yang
+            # punya kolom `kelas`), jangan selalu pakai jadwal sekolah-wide.
+            kelas_siswa = db.query(Siswa.kelas).filter(Siswa.id == rec.siswa_id).scalar()
+            jadwal_efektif = _ambil_jadwal_efektif(db, kelas_siswa, rec.tanggal)
             if jadwal_efektif:
                 penolakan = _validasi_jendela_waktu(db, rec, jadwal_efektif)
                 if penolakan:

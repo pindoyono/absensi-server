@@ -67,8 +67,9 @@ export default function UserMenu() {
         return (
             <a
                 href="/login"
-                className="bg-white text-blue-600 px-3 py-1 rounded font-semibold hover:bg-gray-100 transition"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 transition"
             >
+                <span className="w-6 h-6 rounded-full bg-slate-300 flex items-center justify-center text-xs">?</span>
                 Login
             </a>
         );
@@ -81,16 +82,16 @@ export default function UserMenu() {
         <div className="relative" ref={menuRef}>
             <button
                 onClick={() => setOpen((v) => !v)}
-                className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-2 py-1 rounded-full transition"
+                className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition text-sm"
             >
-                <span className="w-8 h-8 rounded-full bg-white text-blue-600 flex items-center justify-center font-bold">
+                <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">
                     {initial}
                 </span>
-                <span className="hidden sm:block text-sm font-medium max-w-[160px] truncate">
+                <span className="hidden sm:block text-slate-700 font-medium max-w-[120px] truncate">
                     {user.nama}
                 </span>
                 <svg
-                    className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
+                    className={`w-4 h-4 text-slate-500 transition-transform ${open ? "rotate-180" : ""}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -100,18 +101,18 @@ export default function UserMenu() {
             </button>
 
             {open && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg text-gray-800 overflow-hidden z-50">
-                    <div className="px-4 py-3 border-b">
-                        <p className="font-semibold truncate">{user.nama}</p>
-                        <p className="text-sm text-gray-500 truncate">{user.email}</p>
-                        <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full capitalize">
+                <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50">
+                    <div className="px-4 py-3 border-b border-slate-100">
+                        <p className="font-semibold text-slate-900 truncate">{user.nama}</p>
+                        <p className="text-xs text-slate-500 truncate mt-0.5">{user.email}</p>
+                        <span className="inline-block mt-1.5 px-2 py-0.5 bg-slate-100 text-slate-700 text-xs rounded-full capitalize font-medium">
                             {user.role.replace(/_/g, " ")}
                         </span>
                     </div>
                     <button
                         onClick={handleLogout}
                         disabled={loggingOut}
-                        className="w-full text-left px-4 py-2.5 text-red-600 hover:bg-red-50 transition disabled:opacity-50"
+                        className="w-full text-left px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 transition font-medium disabled:opacity-50"
                     >
                         {loggingOut ? "Keluar..." : "Logout"}
                     </button>

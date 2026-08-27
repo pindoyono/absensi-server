@@ -22,6 +22,7 @@ class SiswaIn(BaseModel):
     nama: str
     kelas: str
     jurusan: str = "Teknik Elektronika"
+    konsentrasi_id: Optional[int] = None
 
 
 class SiswaOut(BaseModel):
@@ -30,6 +31,7 @@ class SiswaOut(BaseModel):
     nama: str
     kelas: str
     jurusan: str
+    konsentrasi_id: Optional[int] = None
     enrolled: bool
     tanggal_enrollment: Optional[date] = None
 
@@ -124,6 +126,8 @@ def import_siswa_csv(
         nama = (row.get("nama") or "").strip()
         kelas = (row.get("kelas") or "").strip()
         jurusan = (row.get("jurusan") or "Teknik Elektronika").strip()
+        konsentrasi_id_raw = (row.get("konsentrasi_id") or "").strip()
+        konsentrasi_id = int(konsentrasi_id_raw) if konsentrasi_id_raw.isdigit() else None
 
         if not nis or not nama or not kelas:
             baris_error.append(f"Baris {i}: kolom nis/nama/kelas kosong")
@@ -133,7 +137,7 @@ def import_siswa_csv(
             dilewati += 1
             continue
 
-        db.add(Siswa(nis=nis, nama=nama, kelas=kelas, jurusan=jurusan))
+        db.add(Siswa(nis=nis, nama=nama, kelas=kelas, jurusan=jurusan, konsentrasi_id=konsentrasi_id))
         ditambahkan += 1
 
     db.commit()

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import login, absensi, siswa, jadwal, laporan, device, embeddings, guru, dispensasi
+from app.routers import login, absensi, siswa, jadwal, laporan, device, embeddings, guru, dispensasi, spektrum
 
 app = FastAPI(
     title="API Absensi Face Recognition",
@@ -29,6 +29,7 @@ app.include_router(device.router)
 app.include_router(embeddings.router)
 app.include_router(guru.router)
 app.include_router(dispensasi.router)
+app.include_router(spektrum.router)
 
 
 @app.get("/health")

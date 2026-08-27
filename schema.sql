@@ -28,7 +28,8 @@ CREATE TABLE siswa (
     nis VARCHAR(20) UNIQUE NOT NULL,
     nama VARCHAR(100) NOT NULL,
     kelas VARCHAR(20) NOT NULL,
-    jurusan VARCHAR(50) DEFAULT 'Teknik Elektronika',
+    jurusan VARCHAR(150) DEFAULT 'Teknik Elektronika',
+    konsentrasi_id INT REFERENCES konsentrasi_keahlian(id),
     enrolled BOOLEAN DEFAULT false,
     tanggal_enrollment DATE,
     enrolled_oleh INT REFERENCES guru(id),
@@ -38,6 +39,36 @@ CREATE TABLE siswa (
 
 CREATE INDEX idx_siswa_kelas ON siswa(kelas);
 CREATE INDEX idx_siswa_enrolled ON siswa(enrolled) WHERE enrolled = false;
+
+-- ------------------------------------------------------------
+-- Spektrum Keahlian (Kepmendikbudristek No. 244/M/2024)
+-- Normalisasi 3 level: Bidang -> Program -> Konsentrasi
+-- ------------------------------------------------------------
+CREATE TABLE bidang_keahlian (
+    id SERIAL PRIMARY KEY,
+    nama VARCHAR(100) UNIQUE NOT NULL,
+    kode VARCHAR(10) UNIQUE NOT NULL,
+    dibuat_pada TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE program_keahlian (
+    id SERIAL PRIMARY KEY,
+    bidang_id INT NOT NULL REFERENCES bidang_keahlian(id) ON DELETE CASCADE,
+    nama VARCHAR(150) NOT NULL,
+    kode VARCHAR(10) NOT NULL,
+    dibuat_pada TIMESTAMP DEFAULT now(),
+    UNIQUE (bidang_id, nama)
+);
+
+CREATE TABLE konsentrasi_keahlian (
+    id SERIAL PRIMARY KEY,
+    program_id INT NOT NULL REFERENCES program_keahlian(id) ON DELETE CASCADE,
+    nama VARCHAR(150) NOT NULL,
+    kode VARCHAR(10) NOT NULL,
+    durasi_tahun INT DEFAULT 3,
+    dibuat_pada TIMESTAMP DEFAULT now(),
+    UNIQUE (program_id, nama)
+);
 
 -- ------------------------------------------------------------
 -- Face embedding (terenkripsi), terpisah dari tabel siswa

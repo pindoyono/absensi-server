@@ -6,6 +6,9 @@ lihat `docs/DEPLOYMENT.md` untuk deploy ke Linux, dan
 `docs/API_CONTRACT.md` sebagai panduan wajib sebelum mengembangkan
 client Windows/Android.
 
+Untuk detail perubahan terbaru terkait Spektrum Keahlian dan relasi
+siswa, lihat `docs/SPEKTRUM_API_UPDATE.md`.
+
 ## Status Fase 1
 
 ✅ Semua endpoint direncanakan sudah diimplementasikan dan diuji
@@ -56,7 +59,8 @@ absensi-server/
         ├── jadwal.py                # jadwal standar & override
         ├── laporan.py               # rekap kehadiran
         ├── device.py                # kelola device kiosk
-        └── embeddings.py            # sync cache embedding ke client
+        ├── embeddings.py            # sync cache embedding ke client
+        └── spektrum.py              # CRUD spektrum keahlian (bidang/program/konsentrasi)
 ```
 
 ## Quickstart lokal (development)
