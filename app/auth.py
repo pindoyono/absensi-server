@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import Guru
+from app.models import Guru, Device
+from app.routers.device import verify_api_key
 
 bearer_scheme = HTTPBearer()
 
@@ -89,3 +90,41 @@ def require_role(*allowed_roles: str):
         return guru
 
     return _check
+
+
+def get_guru_or_device(
+    authorization: str | None = Header(default=None),
+    x_device_api_key: str | None = Header(default=None, alias="X-Device-Api-Key"),
+    x_device_id: str | None = Header(default=None, alias="X-Device-Id"),
+    db: Session = Depends(get_db),
+) -> Guru | Device:
+    """
+    Dependency yang menerima DUA jenis autentikasi:
+    1. JWT guru (Authorization: Bearer <token>) — untuk dashboard web
+    2. Device API Key (X-Device-Api-Key + X-Device-Id) — untuk client kiosk
+    
+    Digunakan di endpoint read-only yang perlu diakses device:
+    - GET /jadwal/efektif
+    - GET /dispensasi/aktif
+    """
+    # Coba device API key dulu (prioritas untuk client kiosk)
+    if x_device_api_key and x_device_id:
+        device = db.query(Device).filter(Device.device_id == x_device_id, Device.aktif == True).first()
+        if device and verify_api_key(x_device_api_key, device.api_key_hash):
+            device.last_seen_at = datetime.utcnow()
+            return device
+    
+    # Fallback ke JWT guru (untuk dashboard web)
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+        try:
+            payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Sesi tidak valid atau kedaluwarsa")
+
+        guru = db.query(Guru).filter(Guru.id == int(payload["sub"]), Guru.aktif == True).first()
+        if not guru:
+            raise HTTPException(status_code=401, detail="Akun guru tidak ditemukan atau nonaktif")
+        return guru
+    
+    raise HTTPException(status_code=401, detail="Autentikasi tidak valid: butuh JWT guru atau Device API Key")

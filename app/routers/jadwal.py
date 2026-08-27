@@ -1,13 +1,13 @@
 from datetime import date, time
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import JadwalStandar, JadwalOverride, Guru
-from app.auth import require_role, get_current_guru
+from app.models import JadwalStandar, JadwalOverride, Guru, Device
+from app.auth import require_role, get_current_guru, get_guru_or_device
 
 router = APIRouter(prefix="/jadwal", tags=["jadwal"])
 
@@ -119,7 +119,7 @@ def delete_jadwal_override(
 def jadwal_efektif_hari_ini(
     kelas: Optional[str] = None,
     db: Session = Depends(get_db),
-    guru: Guru = Depends(get_current_guru),
+    auth: Guru | Device = Depends(get_guru_or_device),
 ):
     """Jadwal yang berlaku HARI INI untuk kelas tertentu — cek override
     dulu, baru fallback ke jadwal standar. Ini logika yang sama yang

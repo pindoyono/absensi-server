@@ -1,13 +1,13 @@
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Dispensasi, Guru
-from app.auth import require_role, get_current_guru
+from app.models import Dispensasi, Guru, Device
+from app.auth import require_role, get_current_guru, get_guru_or_device
 
 router = APIRouter(prefix="/dispensasi", tags=["dispensasi"])
 
@@ -67,7 +67,7 @@ def buat_dispensasi(
 def list_dispensasi_aktif(
     tanggal: date,
     db: Session = Depends(get_db),
-    guru: Guru = Depends(get_current_guru),
+    auth: Guru | Device = Depends(get_guru_or_device),
 ):
     """Dipanggil client untuk sinkronisasi cache lokal — semua
     dispensasi yang berlaku untuk tanggal tertentu."""
