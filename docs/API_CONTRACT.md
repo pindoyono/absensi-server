@@ -17,6 +17,34 @@ Ada **2 jenis autentikasi berbeda** di sistem ini — jangan tertukar:
 
 Client kiosk (Windows/Android) **tidak pernah login sebagai guru** — device punya identitasnya sendiri lewat API key, terpisah dari akun manusia.
 
+### Keputusan keamanan: HMAC `X-Signature` tidak diimplementasikan (Opsi A — status quo)
+
+**Konteks:** PRD observability/degradasi offline-first §5.3 mencatat bahwa client kiosk
+mengirim header `X-Signature`/`X-Timestamp` (HMAC), tetapi server tidak pernah
+memverifikasinya. Item ini adalah keputusan yang belum diambil.
+
+**Keputusan (2026-08-30): Opsi A — autentikasi cukup API Key saja.**
+
+Alasan:
+1. **Transport sudah terproteksi.** Seluruh trafik berjalan di HTTPS (TLS), sehingga
+   API key tidak terekspos di jaringan.
+2. **API key sudah disimpan sebagai hash.** Server hanya menyimpan `SHA-256(api_key)`
+   di kolom `device.api_key_hash` — kebocoran database tidak membocorkan key mentah.
+3. **Skema signing client tidak terdokumentasi di repo ini.** Client mengirim
+   `X-Signature` dari `_add_auth_headers` (lihat `PRD_JADWAL_OVERRIDE_DEVICE.md` §6.3),
+   tetapi string yang di-sign, format timestamp, dan key-nya hanya ada di repo
+   `client-windows`. Menerapkan verifikasi dengan skema yang salah akan menolak
+   semua device produksi.
+4. **Rotasi key tersedia.** Jika key dicurigai bocor, admin bisa
+   `POST /device/{device_id}/regenerate-key` — key lama langsung hangus.
+
+Konsekuensi:
+- Header `X-Signature` dan `X-Timestamp` yang dikirim client **diabaikan** oleh server
+  (tidak diverifikasi, tidak ditolak). Client boleh terus mengirimnya tanpa efek.
+- Jika di masa depan dibutuhkan verifikasi HMAC, skema signing harus disepakati dulu
+  antara repo client dan server, lalu verifikasi diterapkan bertahap (tolak hanya
+  jika header ada tapi tidak valid).
+
 ### 1.1 Registrasi device (dilakukan admin, sekali per device)
 
 ```
