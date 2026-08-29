@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, date as date_cls
 
-from fastapi import APIRouter, Depends, HTTPException, Header
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from sqlalchemy import select, or_, and_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -245,3 +245,90 @@ def approve_absensi(
     db.commit()
 
     return {"status": "ok", "record_id": record_id}
+
+@router.get("/list")
+def list_absensi(
+    dari_tanggal: date_cls | None = Query(default=None, description="Filter awal rentang tanggal"),
+    sampai_tanggal: date_cls | None = Query(default=None, description="Filter akhir rentang tanggal"),
+    kelas: str | None = Query(default=None, description="Filter kelas siswa"),
+    type: str | None = Query(default=None, description="Filter jenis absen: MASUK | PULANG"),
+    siswa_id: int | None = Query(default=None, description="Filter per siswa"),
+    status: str | None = Query(default=None, description="Filter status kehadiran final"),
+    cari: str | None = Query(default=None, description="Pencarian bebas: nama/NIS siswa"),
+    limit: int = Query(default=200, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(get_current_guru),
+):
+    """
+    Daftar detail record absensi untuk halaman "Absensi" di dashboard.
+    Query terfilter + terpaginate, join dengan siswa untuk menampilkan
+    nama/NIS/kelas. Wali kelas otomatis dibatasi ke kelas yang diampu.
+    """
+    if guru.role == "wali_kelas":
+        kelas = guru.kelas_diampu
+
+    q = (
+        db.query(Absensi, Siswa)
+        .join(Siswa, Siswa.id == Absensi.siswa_id)
+    )
+
+    if dari_tanggal:
+        q = q.filter(Absensi.tanggal >= dari_tanggal)
+    if sampai_tanggal:
+        q = q.filter(Absensi.tanggal <= sampai_tanggal)
+    if kelas:
+        q = q.filter(Siswa.kelas == kelas)
+    if type:
+        q = q.filter(Absensi.type == type)
+    if siswa_id:
+        q = q.filter(Absensi.siswa_id == siswa_id)
+    if status:
+        # status efektif = final kalau sudah di-approve, selain itu otomatis
+        q = q.filter(
+            or_(
+                Absensi.status_kehadiran_final == status,
+                and_(
+                    Absensi.status_kehadiran_final.is_(None),
+                    Absensi.status_kehadiran_otomatis == status,
+                ),
+            )
+        )
+    if cari:
+        like = f"%{cari}%"
+        q = q.filter(or_(Siswa.nama.ilike(like), Siswa.nis.ilike(like)))
+
+    total = q.count()
+    rows = (
+        q.order_by(Absensi.tanggal.desc(), Absensi.jam_aktual.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    data = []
+    for absensi, siswa in rows:
+        status_efektif = absensi.status_kehadiran_final or absensi.status_kehadiran_otomatis
+        data.append({
+            "record_id": str(absensi.record_id),
+            "siswa_id": siswa.id,
+            "nis": siswa.nis,
+            "nama": siswa.nama,
+            "kelas": siswa.kelas,
+            "tanggal": absensi.tanggal,
+            "type": absensi.type,
+            "jam_aktual": absensi.jam_aktual,
+            "status_kehadiran_otomatis": absensi.status_kehadiran_otomatis,
+            "status_kehadiran_final": absensi.status_kehadiran_final,
+            "status_efektif": status_efektif,
+            "catatan": absensi.catatan,
+            "device_id": absensi.device_id,
+            "approved_by": absensi.approved_by,
+        })
+
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "data": data,
+    }

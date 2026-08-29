@@ -48,6 +48,13 @@ export default function SiswaPage() {
     const [formError, setFormError] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<number | null>(null);
 
+    // Import CSV state
+    const [importOpen, setImportOpen] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importing, setImporting] = useState(false);
+    const [importResult, setImportResult] = useState<{ ditambahkan: number; dilewati_sudah_ada: number; baris_error: string[] } | null>(null);
+    const [importError, setImportError] = useState<string | null>(null);
+
     // Filter state
     const [filterKelas, setFilterKelas] = useState<string>("");
     const [filterEnrolled, setFilterEnrolled] = useState<string>("all");
@@ -119,7 +126,7 @@ export default function SiswaPage() {
     const handleSave = async () => {
         if (!token) return;
         if (!form.nis.trim() || !form.nama.trim() || !form.kelas.trim()) {
-            setFormError("NIS, nama, dan kelas wajib diisi.");
+            setFormError("NISN, nama, dan kelas wajib diisi.");
             return;
         }
         setSaving(true);
@@ -153,6 +160,57 @@ export default function SiswaPage() {
             setFormError(err instanceof Error ? err.message : "Gagal menyimpan");
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleDownloadTemplate = async () => {
+        if (!token) return;
+        try {
+            const res = await fetch(`${API_BASE}/siswa/template-csv`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "template_siswa.csv";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Gagal mengunduh template");
+        }
+    };
+
+    const handleImport = async () => {
+        if (!token || !importFile) return;
+        setImporting(true);
+        setImportError(null);
+        setImportResult(null);
+        try {
+            const formData = new FormData();
+            formData.append("file", importFile);
+            const res = await fetch(`${API_BASE}/siswa/import`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) {
+                throw new Error(body?.detail ?? `HTTP ${res.status}`);
+            }
+            setImportResult({
+                ditambahkan: body.ditambahkan ?? 0,
+                dilewati_sudah_ada: body.dilewati_sudah_ada ?? 0,
+                baris_error: body.baris_error ?? [],
+            });
+            await loadSiswa(token);
+        } catch (err) {
+            setImportError(err instanceof Error ? err.message : "Gagal mengimpor");
+        } finally {
+            setImporting(false);
         }
     };
 
@@ -206,7 +264,15 @@ export default function SiswaPage() {
                     <h1 className="text-2xl font-bold text-slate-900">Manajemen Siswa</h1>
                     <p className="text-sm text-slate-500">Daftar siswa & pengelolaan data</p>
                 </div>
-                <Button onClick={openCreate}>+ Tambah Siswa</Button>
+                <div className="flex gap-2">
+                    <Button variant="ghost" onClick={handleDownloadTemplate}>
+                        Download Template
+                    </Button>
+                    <Button variant="ghost" onClick={() => { setImportOpen(true); setImportResult(null); setImportError(null); setImportFile(null); }}>
+                        Import CSV
+                    </Button>
+                    <Button onClick={openCreate}>+ Tambah Siswa</Button>
+                </div>
             </div>
 
             {/* Filter */}
@@ -240,7 +306,7 @@ export default function SiswaPage() {
                 <table className="min-w-full text-sm">
                     <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">
-                            <th className="py-3 px-4 text-left">NIS</th>
+                            <th className="py-3 px-4 text-left">NISN</th>
                             <th className="py-3 px-4 text-left">Nama</th>
                             <th className="py-3 px-4 text-left">Kelas</th>
                             <th className="py-3 px-4 text-left">Jurusan</th>
@@ -303,7 +369,7 @@ export default function SiswaPage() {
 
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">NIS</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">NISN</label>
                                 <input
                                     type="text"
                                     value={form.nis}
@@ -388,6 +454,62 @@ export default function SiswaPage() {
                             <Button onClick={handleSave} isLoading={saving}>
                                 {saving ? "Menyimpan..." : editingId ? "Simpan Perubahan" : "Tambah Siswa"}
                             </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Import CSV */}
+            {importOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 border border-slate-200">
+                        <h3 className="text-xl font-bold mb-4 text-slate-900">Import Siswa (CSV)</h3>
+
+                        <p className="text-sm text-slate-500 mb-3">
+                            Format kolom: <code className="bg-slate-100 px-1 rounded">nis,nama,kelas,jurusan</code>.
+                            Baris dengan NISN yang sudah ada akan dilewati.
+                        </p>
+
+                        <input
+                            type="file"
+                            accept=".csv,text/csv"
+                            onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                            className="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 file:font-medium hover:file:bg-blue-100"
+                        />
+
+                        {importError && (
+                            <div className="mt-4 p-3 bg-rose-50 text-rose-700 rounded-lg border border-rose-200 text-sm">
+                                {importError}
+                            </div>
+                        )}
+
+                        {importResult && (
+                            <div className="mt-4 p-3 bg-emerald-50 text-emerald-800 rounded-lg border border-emerald-200 text-sm space-y-1">
+                                <p className="font-medium">Import selesai</p>
+                                <p>Ditambahkan: {importResult.ditambahkan}</p>
+                                <p>Dilewati (sudah ada): {importResult.dilewati_sudah_ada}</p>
+                                {importResult.baris_error.length > 0 && (
+                                    <div className="mt-1">
+                                        <p className="font-medium">Baris bermasalah:</p>
+                                        <ul className="list-disc list-inside text-xs text-rose-700">
+                                            {importResult.baris_error.map((e, i) => (
+                                                <li key={i}>{e}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="mt-6 flex justify-end space-x-3">
+                            <Button variant="ghost" onClick={() => setImportOpen(false)} disabled={importing}>
+                                {importResult ? "Tutup" : "Batal"}
+                            </Button>
+                            {!importResult && (
+                                <Button onClick={handleImport} isLoading={importing} disabled={!importFile}>
+                                    {importing ? "Mengimpor..." : "Import"}
+                                </Button>
+                            )}
                         </div>
                     </div>
                 </div>

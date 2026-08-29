@@ -1,14 +1,15 @@
 import csv
 import io
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Siswa, FaceEmbedding, Guru
+from app.models import Siswa, FaceEmbedding, Guru, KonsentrasiKeahlian
 from app.auth import require_role, get_current_guru
 from app.services.crypto import encrypt_embedding
 
@@ -102,6 +103,59 @@ def update_siswa(
     db.refresh(row)
     return row
 
+@router.delete("/{siswa_id}")
+def deactivate_siswa(
+    siswa_id: int,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin")),
+):
+    """
+    Soft delete: set aktif=False (bukan hapus baris, supaya riwayat absensi
+    tetap utuh). PRD_EMBEDDING_SYNC: siswa nonaktif tetap dikirim via
+    GET /embeddings/sync dengan aktif=false, sehingga client kiosk bisa
+    menghapus cache embedding lokal dan siswa tidak bisa absen lagi.
+    """
+    row = db.query(Siswa).filter(Siswa.id == siswa_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Siswa tidak ditemukan")
+    row.aktif = False
+    # Bump timestamp embedding supaya client yang sudah sync incremental
+    # (diperbarui_sejak) tetap menerima status aktif=false ini pada siklus
+    # sync berikutnya — tanpa ini, penonaktifan tidak pernah terkirim.
+    emb = db.query(FaceEmbedding).filter(FaceEmbedding.siswa_id == siswa_id).first()
+    if emb:
+        emb.diperbarui_pada = datetime.utcnow()
+    db.commit()
+    return {"status": "ok", "siswa_id": siswa_id, "aktif": False}
+
+@router.get("/template-csv")
+def download_template_siswa_csv(
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin")),
+):
+    """
+    Download template CSV untuk import massal siswa. Kolom: nis,nama,kelas,
+    jurusan,konsentrasi_id. Baris contoh diambil dari konsentrasi keahlian
+    yang ada (jika ada) supaya user tahu format konsentrasi_id yang valid.
+    """
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["nis", "nama", "kelas", "jurusan", "konsentrasi_id"])
+
+    # 3 baris contoh dari konsentrasi keahlian terdaftar (jika ada)
+    konsentrasi = db.query(KonsentrasiKeahlian).order_by(KonsentrasiKeahlian.kode).limit(3).all()
+    if konsentrasi:
+        for k in konsentrasi:
+            writer.writerow(["", "Contoh " + k.nama, "XII", k.nama, k.id])
+    else:
+        writer.writerow(["", "Contoh Siswa", "XII", "Teknik Elektronika", ""])
+
+    csv_bytes = output.getvalue().encode("utf-8-sig")
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=template_siswa.csv"},
+    )
 
 @router.post("/import")
 def import_siswa_csv(

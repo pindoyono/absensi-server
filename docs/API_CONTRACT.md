@@ -93,6 +93,7 @@ Response:
       "nis": "22001",
       "nama": "Ahmad Fauzan",
       "kelas": "XI Elektronika",
+      "aktif": true,
       "embedding_encrypted": "gAAAAABm...(hex string)",
       "model_version": "minifasnet-v1",
       "diperbarui_pada": "2026-08-20T08:00:00"
@@ -106,6 +107,7 @@ Response:
 - **Jangan didekripsi di client dengan key yang sama seperti server** — client seharusnya punya mekanisme dekripsi sendiri yang konsisten (lihat catatan keamanan di bagian 7).
 - Panggil endpoint ini secara periodik (misal tiap kali online, atau tiap beberapa jam) dengan `diperbarui_sejak` = waktu sync terakhir, supaya tidak menarik ulang semua data tiap kali.
 - Simpan `server_time` dari response sebagai acuan `diperbarui_sejak` untuk sync berikutnya (bukan waktu lokal device, untuk menghindari drift jam).
+- **Field `aktif` (PRD_EMBEDDING_SYNC):** jika `aktif == false`, client **wajib menghapus** data siswa dari cache lokal (`siswa_cache` dan `embedding_cache`) berdasarkan `siswa_id` — siswa tersebut sudah dinonaktifkan/dihapus di server dan tidak boleh bisa absen lagi. Jika `aktif == true`, lakukan upsert seperti biasa.
 
 ---
 

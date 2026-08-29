@@ -42,7 +42,6 @@ def sync_embeddings(
     q = (
         db.query(Siswa, FaceEmbedding)
         .join(FaceEmbedding, FaceEmbedding.siswa_id == Siswa.id)
-        .filter(Siswa.aktif == True)
     )
     if diperbarui_sejak:
         q = q.filter(FaceEmbedding.diperbarui_pada > diperbarui_sejak)
@@ -54,6 +53,7 @@ def sync_embeddings(
             "nis": siswa.nis,
             "nama": siswa.nama,
             "kelas": siswa.kelas,
+            "aktif": siswa.aktif,
             "embedding_encrypted": emb.embedding_encrypted.hex(),  # hex agar aman di JSON
             "model_version": emb.model_version,
             "diperbarui_pada": emb.diperbarui_pada,

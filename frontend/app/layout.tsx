@@ -44,31 +44,37 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   href="/guru"
                   className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
                 >
-                  Manajemen Guru
+                  Guru
                 </a>
                 <a
                   href="/siswa"
                   className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
                 >
-                  Manajemen Siswa
+                  Siswa
                 </a>
                 <a
                   href="/jadwal"
                   className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
                 >
-                  Manajemen Jadwal
+                  Jadwal
                 </a>
                 <a
                   href="/dispensasi"
                   className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
                 >
-                  Manajemen Dispensasi
+                  Dispensasi
+                </a>
+                <a
+                  href="/absensi"
+                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
+                >
+                  Absensi
                 </a>
                 <a
                   href="/konsentrasi"
                   className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
                 >
-                  Manajemen Spektrum Keahlian
+                  Spektrum
                 </a>
               </nav>
 
@@ -87,6 +93,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <a href="/siswa" className="text-slate-600 hover:text-blue-600">Siswa</a>
           <a href="/jadwal" className="text-slate-600 hover:text-blue-600">Jadwal</a>
           <a href="/dispensasi" className="text-slate-600 hover:text-blue-600">Dispensasi</a>
+          <a href="/absensi" className="text-slate-600 hover:text-blue-600">Absensi</a>
           <a href="/konsentrasi" className="text-slate-600 hover:text-blue-600">Spektrum</a>
         </div>
 
