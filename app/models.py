@@ -95,6 +95,13 @@ class JadwalOverride(Base):
     alasan = Column(Text)
     dibuat_oleh = Column(Integer, ForeignKey("guru.id"))
     dibuat_pada = Column(DateTime, server_default=func.now())
+    # PRD_JADWAL_OVERRIDE_DEVICE: override bisa dibuat dari device kiosk
+    # (offline-first) lalu di-push ke server. client_id = UUID idempotency
+    # key dari device (retry sync tidak membuat duplikat), device_id =
+    # audit trail sumber (bukan FK, device bisa dihapus), sumber = 'guru' | 'device'.
+    client_id = Column(String(36), unique=True, nullable=True, index=True)
+    device_id = Column(String(50), nullable=True)
+    sumber = Column(String(10), nullable=False, default="guru")
 
 
 class Absensi(Base):

@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import Guru, Device
-from app.routers.device import verify_api_key
 
 bearer_scheme = HTTPBearer()
 
@@ -107,6 +106,12 @@ def get_guru_or_device(
     - GET /jadwal/efektif
     - GET /dispensasi/aktif
     """
+    # Lazy import: app.routers.device juga mengimpor modul ini (require_role,
+    # get_current_guru). Impor top-level di sini menimbulkan circular import
+    # yang membuat seluruh aplikasi gagal di-load. Impor di dalam fungsi
+    # memutus siklus tersebut.
+    from app.routers.device import verify_api_key
+
     # Coba device API key dulu (prioritas untuk client kiosk)
     if x_device_api_key and x_device_id:
         device = db.query(Device).filter(Device.device_id == x_device_id, Device.aktif == True).first()

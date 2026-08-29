@@ -109,7 +109,7 @@ CREATE TABLE jadwal_standar (
 );
 
 -- ------------------------------------------------------------
--- Override jadwal oleh guru piket (tanggal tertentu)
+-- Override jadwal oleh guru piket / device kiosk (tanggal tertentu)
 -- ------------------------------------------------------------
 CREATE TABLE jadwal_override (
     id SERIAL PRIMARY KEY,
@@ -118,11 +118,15 @@ CREATE TABLE jadwal_override (
     jam_masuk TIME,
     jam_pulang TIME,
     alasan TEXT,
-    dibuat_oleh INT REFERENCES guru(id),
-    dibuat_pada TIMESTAMP DEFAULT now()
+    dibuat_oleh INT REFERENCES guru(id),    -- NULL kalau dibuat device kiosk
+    dibuat_pada TIMESTAMP DEFAULT now(),
+    client_id VARCHAR(36) UNIQUE,           -- UUID idempotency key dari device kiosk
+    device_id VARCHAR(50),                  -- device_id sumber (bukan FK, device bisa dihapus)
+    sumber VARCHAR(10) NOT NULL DEFAULT 'guru'  -- 'guru' | 'device'
 );
 
 CREATE INDEX idx_jadwal_override_tanggal ON jadwal_override(tanggal);
+CREATE INDEX ix_jadwal_override_client_id ON jadwal_override(client_id);
 
 -- ------------------------------------------------------------
 -- Absensi — inti sistem. Maksimal 2 baris per (siswa, tanggal).

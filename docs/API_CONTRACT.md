@@ -183,6 +183,64 @@ Client harus:
 
 ---
 
+## 5a. Override Jadwal dari Device Kiosk (Offline-First)
+
+Endpoint `POST /jadwal/override` menerima **dua** jenis autentikasi (lihat PRD `docs/PRD_JADWAL_OVERRIDE_DEVICE.md`):
+
+- **JWT guru** (`Authorization: Bearer <JWT>`, role `admin`/`guru_piket`) — `sumber='guru'`, `dibuat_oleh=guru.id`. Backward-compatible dengan dashboard web.
+- **Device API Key** (`X-Device-Id` + `X-Device-Api-Key`) — `sumber='device'`, `dibuat_oleh=NULL`, `device_id` tercatat untuk audit. Device **hanya boleh POST** (create); `PUT`/`DELETE` tetap khusus JWT guru.
+
+### 5a.1 Request dari Device
+
+```
+POST /jadwal/override
+X-Device-Id: <device_id>
+X-Device-Api-Key: <api_key>
+Content-Type: application/json
+
+{
+  "tanggal": "2026-08-29",
+  "jam_masuk": "09:00:00",
+  "jam_pulang": "13:00:00",
+  "kelas": "XI",
+  "alasan": "Ujian sekolah",
+  "client_id": "e010d98f-..."   # UUID idempotency key (opsional tapi disarankan)
+}
+```
+
+- `tanggal`, `jam_masuk`, `jam_pulang` **wajib** untuk device.
+- `client_id` dipakai sebagai **idempotency key**: request ulang dengan `client_id` sama mengembalikan record yang sudah ada (HTTP 200) tanpa membuat baris baru — aman untuk retry tiap siklus sync.
+- Validasi: `jam_masuk` harus `<` `jam_pulang` (400 kalau melanggar).
+
+Response (200 OK):
+
+```json
+{
+  "id": 42,
+  "tanggal": "2026-08-29",
+  "kelas": "XI",
+  "jam_masuk": "09:00:00",
+  "jam_pulang": "13:00:00",
+  "alasan": "Ujian sekolah",
+  "dibuat_oleh": null,
+  "dibuat_pada": "2026-08-29T10:00:00",
+  "client_id": "e010d98f-...",
+  "device_id": "<device_id>",
+  "sumber": "device"
+}
+```
+
+### 5a.2 Reset status push (pasca-deploy)
+
+Override lokal di client yang statusnya sudah `ditolak` tidak di-retry (by design). Setelah server diperbaiki, admin jalankan sekali (lewat menu "Reset status push" di panel admin, atau script SQL):
+
+```sql
+UPDATE jadwal_override_lokal SET terkirim = 0, status_push = 'pending', pesan_push = NULL
+WHERE status_push = 'ditolak';
+```
+
+---
+
 ## 5b. Dispensasi (Izin Pulang Cepat)
 
 Dispensasi adalah **izin di muka** yang diberikan guru piket **sebelum** siswa absen pulang. Berbeda dengan `status_kehadiran_final` (approve sesudah absen), dispensasi memungkinkan siswa absen PULANG sebelum jam pulang standar.
