@@ -1,5 +1,6 @@
 import hashlib
 import secrets
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -23,9 +24,19 @@ class DeviceOut(BaseModel):
     nama_lokasi: str
     platform: str
     aktif: bool
+    last_seen_at: datetime | None = None
+    dibuat_pada: datetime | None = None
+    # PRD-observability-degradasi-offline-first §5.1: kesegaran data
+    jadwal_jam_lalu: float | None = None
+    dispensasi_jam_lalu: float | None = None
+    health_dilaporkan_pada: datetime | None = None
 
     class Config:
         from_attributes = True
+
+class DeviceHealthIn(BaseModel):
+    jadwal_jam_lalu: float | None = None
+    dispensasi_jam_lalu: float | None = None
 
 
 def hash_api_key(raw_key: str) -> str:
@@ -101,3 +112,28 @@ def deactivate_device(
     device.aktif = False
     db.commit()
     return {"status": "dinonaktifkan"}
+
+
+@router.post("/{device_id}/health")
+def report_device_health(
+    device_id: str,
+    body: DeviceHealthIn,
+    db: Session = Depends(get_db),
+):
+    """
+    PRD-observability-degradasi-offline-first §5.1.
+    Client kiosk melaporkan kesegaran data jadwal & dispensasi.
+    Tidak perlu auth — request datang dari device sendiri (tidak ada
+    guru yang login). Cukup verifikasi device_id terdaftar & aktif.
+    """
+    device = db.query(Device).filter(Device.device_id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device tidak ditemukan")
+    if not device.aktif:
+        raise HTTPException(status_code=403, detail="Device tidak aktif")
+
+    device.jadwal_jam_lalu = body.jadwal_jam_lalu
+    device.dispensasi_jam_lalu = body.dispensasi_jam_lalu
+    device.health_dilaporkan_pada = datetime.utcnow()
+    db.commit()
+    return {"status": "ok"}

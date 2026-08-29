@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy import (
     Column, Integer, String, Boolean, Date, Time, DateTime,
-    ForeignKey, Text, UniqueConstraint, CheckConstraint, LargeBinary
+    ForeignKey, Text, UniqueConstraint, CheckConstraint, LargeBinary, Float
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -68,6 +68,14 @@ class Device(Base):
     last_seen_at = Column(DateTime)
     aktif = Column(Boolean, default=True)
     dibuat_pada = Column(DateTime, server_default=func.now())
+
+    # PRD-observability-degradasi-offline-first §5.1: kesegaran data yang
+    # dilaporkan client kiosk via POST /device/{id}/health. jadwal_jam_lalu /
+    # dispensasi_jam_lalu = jam sejak terakhir berhasil sync (None = belum
+    # pernah sync sama sekali, kondisi lebih parah dari basi).
+    jadwal_jam_lalu = Column(Float, nullable=True)
+    dispensasi_jam_lalu = Column(Float, nullable=True)
+    health_dilaporkan_pada = Column(DateTime, nullable=True)
 
 
 class JadwalStandar(Base):

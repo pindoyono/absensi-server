@@ -71,6 +71,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   Absensi
                 </a>
                 <a
+                  href="/laporan"
+                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
+                >
+                  Laporan
+                </a>
+                <a
+                  href="/device"
+                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
+                >
+                  Device
+                </a>
+                <a
                   href="/konsentrasi"
                   className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
                 >
@@ -94,6 +106,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <a href="/jadwal" className="text-slate-600 hover:text-blue-600">Jadwal</a>
           <a href="/dispensasi" className="text-slate-600 hover:text-blue-600">Dispensasi</a>
           <a href="/absensi" className="text-slate-600 hover:text-blue-600">Absensi</a>
+          <a href="/laporan" className="text-slate-600 hover:text-blue-600">Laporan</a>
+          <a href="/device" className="text-slate-600 hover:text-blue-600">Device</a>
           <a href="/konsentrasi" className="text-slate-600 hover:text-blue-600">Spektrum</a>
         </div>
 
