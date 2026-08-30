@@ -109,3 +109,30 @@ def test_status_kesehatan_device_belum_pernah_lapor(client):
     lst = client.get("/device/status-kesehatan", headers={"Authorization": f"Bearer {tok}"})
     dev = next(d for d in lst.json() if d["device_id"] == "kiosk-health")
     assert dev["belum_pernah_lapor"] is True
+
+
+def test_register_tanpa_device_id_di_generate_otomatis(client):
+    """Opsi B: device_id kosong -> server generate dev-xxxxxxxx."""
+    tok = _login_guru(client, "admin@sekolah.sch.id")
+    r = client.post(
+        "/device/register",
+        headers={"Authorization": f"Bearer {tok}"},
+        json={"nama_lokasi": "Lokasi Otomatis", "platform": "windows"},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["device_id"].startswith("dev-")
+    assert len(data["device_id"]) == 12  # dev- + 8 karakter
+    assert data["api_key"]
+
+
+def test_register_dengan_device_id_override(client):
+    """Opsi B: device_id diisi manual tetap dihormati."""
+    tok = _login_guru(client, "admin@sekolah.sch.id")
+    r = client.post(
+        "/device/register",
+        headers={"Authorization": f"Bearer {tok}"},
+        json={"device_id": "lab-rpl-01", "nama_lokasi": "Lab RPL", "platform": "windows"},
+    )
+    assert r.status_code == 200
+    assert r.json()["device_id"] == "lab-rpl-01"

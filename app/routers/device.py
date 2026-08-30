@@ -14,7 +14,7 @@ router = APIRouter(prefix="/device", tags=["device"])
 
 
 class DeviceIn(BaseModel):
-    device_id: str
+    device_id: str | None = None  # opsional — kosongkan untuk generate otomatis
     nama_lokasi: str
     platform: str  # 'windows' | 'android'
 
@@ -45,6 +45,16 @@ def list_device(db: Session = Depends(get_db), guru: Guru = Depends(require_role
     return db.query(Device).all()
 
 
+def _generate_device_id(db: Session) -> str:
+    """Generate device_id unik (Opsi B): dev-XXXXXXXX (8 karakter aman URL)."""
+    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+    for _ in range(10):  # hindari tabrakan unik yang sangat kecil kemungkinannya
+        candidate = "dev-" + "".join(secrets.choice(alphabet) for _ in range(8))
+        if not db.query(Device).filter(Device.device_id == candidate).first():
+            return candidate
+    raise HTTPException(status_code=500, detail="Gagal generate device_id unik")
+
+
 @router.post("/register")
 def register_device(
     body: DeviceIn,
@@ -54,15 +64,23 @@ def register_device(
     """
     Daftarkan device baru. API key mentah HANYA ditampilkan sekali di
     response ini — server hanya menyimpan hash-nya (SHA-256). Admin harus
-    menyalin key ini ke konfigurasi device (Windows/Android) saat setup.
-    Kalau key hilang, harus regenerate (bukan bisa dilihat ulang).
+    menyalin device_id + api_key ini ke konfigurasi device (Windows/Android)
+    saat setup. Kalau key hilang, harus regenerate (bukan bisa dilihat ulang).
+
+    Opsi B: device_id otomatis di-generate (dev-XXXXXXXX) kalau tidak diisi.
+    Admin tetap boleh override lewat field device_id (tetap divalidasi unik).
     """
-    if db.query(Device).filter(Device.device_id == body.device_id).first():
-        raise HTTPException(status_code=409, detail="device_id sudah terdaftar")
+    device_id = body.device_id
+    if device_id:
+        device_id = device_id.strip()
+        if db.query(Device).filter(Device.device_id == device_id).first():
+            raise HTTPException(status_code=409, detail="device_id sudah terdaftar")
+    else:
+        device_id = _generate_device_id(db)
 
     raw_key = secrets.token_urlsafe(32)
     row = Device(
-        device_id=body.device_id,
+        device_id=device_id,
         nama_lokasi=body.nama_lokasi,
         platform=body.platform,
         api_key_hash=hash_api_key(raw_key),
@@ -71,9 +89,9 @@ def register_device(
     db.commit()
 
     return {
-        "device_id": body.device_id,
+        "device_id": device_id,
         "api_key": raw_key,  # tampil SEKALI SAJA, simpan baik-baik
-        "peringatan": "Simpan api_key ini sekarang — tidak akan ditampilkan lagi.",
+        "peringatan": "Simpan device_id & api_key ini sekarang — tidak akan ditampilkan lagi.",
     }
 
 
