@@ -83,6 +83,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   Device
                 </a>
                 <a
+                  href="/status-device"
+                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
+                >
+                  Status Device
+                </a>
+                <a
                   href="/konsentrasi"
                   className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
                 >
@@ -108,6 +114,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <a href="/absensi" className="text-slate-600 hover:text-blue-600">Absensi</a>
           <a href="/laporan" className="text-slate-600 hover:text-blue-600">Laporan</a>
           <a href="/device" className="text-slate-600 hover:text-blue-600">Device</a>
+          <a href="/status-device" className="text-slate-600 hover:text-blue-600">Status Device</a>
           <a href="/konsentrasi" className="text-slate-600 hover:text-blue-600">Spektrum</a>
         </div>
 

@@ -1,14 +1,14 @@
-import hashlib
 import secrets
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Device, Guru
 from app.auth import require_role, get_current_guru
+from app.services.device_auth import verify_device, hash_api_key, verify_api_key
 
 router = APIRouter(prefix="/device", tags=["device"])
 
@@ -38,13 +38,6 @@ class DeviceHealthIn(BaseModel):
     jadwal_jam_lalu: float | None = None
     dispensasi_jam_lalu: float | None = None
 
-
-def hash_api_key(raw_key: str) -> str:
-    return hashlib.sha256(raw_key.encode()).hexdigest()
-
-
-def verify_api_key(raw_key: str, hashed: str) -> bool:
-    return hashlib.sha256(raw_key.encode()).hexdigest() == hashed
 
 
 @router.get("", response_model=list[DeviceOut])
@@ -114,26 +107,59 @@ def deactivate_device(
     return {"status": "dinonaktifkan"}
 
 
+# Ambang batas basi — HARUS sama dengan BATAS_STALE_JADWAL_JAM /
+# BATAS_STALE_DISPENSASI_JAM di config client kiosk, supaya dashboard dan
+# kiosk "sepakat" soal kapan data dianggap basi (PRD-tuntaskan-device-health §3).
+BATAS_STALE_JADWAL_JAM = 6
+BATAS_STALE_DISPENSASI_JAM = 2
+
+
 @router.post("/{device_id}/health")
 def report_device_health(
     device_id: str,
     body: DeviceHealthIn,
     db: Session = Depends(get_db),
+    x_device_api_key: str | None = Header(default=None, alias="X-Device-Api-Key"),
 ):
     """
     PRD-observability-degradasi-offline-first §5.1.
     Client kiosk melaporkan kesegaran data jadwal & dispensasi.
-    Tidak perlu auth — request datang dari device sendiri (tidak ada
-    guru yang login). Cukup verifikasi device_id terdaftar & aktif.
-    """
-    device = db.query(Device).filter(Device.device_id == device_id).first()
-    if not device:
-        raise HTTPException(status_code=404, detail="Device tidak ditemukan")
-    if not device.aktif:
-        raise HTTPException(status_code=403, detail="Device tidak aktif")
 
+    Butuh X-Device-Api-Key (sama seperti /absensi/sync, /embeddings/sync,
+    /jadwal/efektif) -- TANPA ini, device_id bisa ditebak/dipalsukan untuk
+    mengirim laporan kesehatan palsu.
+    """
+    verify_device(db, device_id, x_device_api_key)
+
+    device = db.query(Device).filter(Device.device_id == device_id).first()
     device.jadwal_jam_lalu = body.jadwal_jam_lalu
     device.dispensasi_jam_lalu = body.dispensasi_jam_lalu
     device.health_dilaporkan_pada = datetime.utcnow()
     db.commit()
     return {"status": "ok"}
+
+
+@router.get("/status-kesehatan")
+def status_kesehatan_semua_device(
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin", "guru_piket")),
+):
+    """
+    PRD-tuntaskan-device-health §3. Dipakai dashboard — ringkasan kesehatan
+    semua device aktif. Ambang batas sama dengan config client kiosk.
+    """
+    devices = db.query(Device).filter(Device.aktif == True).all()
+    return [
+        {
+            "device_id": d.device_id,
+            "nama_lokasi": d.nama_lokasi,
+            "online_terakhir": d.last_seen_at,
+            "health_dilaporkan_pada": d.health_dilaporkan_pada,
+            "jadwal_jam_lalu": d.jadwal_jam_lalu,
+            "dispensasi_jam_lalu": d.dispensasi_jam_lalu,
+            "jadwal_bermasalah": (d.jadwal_jam_lalu or 999) > BATAS_STALE_JADWAL_JAM,
+            "dispensasi_bermasalah": (d.dispensasi_jam_lalu or 999) > BATAS_STALE_DISPENSASI_JAM,
+            "belum_pernah_lapor": d.health_dilaporkan_pada is None,
+        }
+        for d in devices
+    ]

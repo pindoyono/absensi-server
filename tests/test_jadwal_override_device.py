@@ -17,7 +17,7 @@ from app.database import Base
 from app import models  # noqa: F401 — register semua model ke Base
 from app.main import app
 from app.database import get_db
-from app.routers.device import hash_api_key
+from app.services.device_auth import hash_api_key
 
 # ─── Fixtures ─────────────────────────────────────────────────
 

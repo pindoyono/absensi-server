@@ -110,7 +110,7 @@ def get_guru_or_device(
     # get_current_guru). Impor top-level di sini menimbulkan circular import
     # yang membuat seluruh aplikasi gagal di-load. Impor di dalam fungsi
     # memutus siklus tersebut.
-    from app.routers.device import verify_api_key
+    from app.services.device_auth import verify_api_key
 
     # Coba device API key dulu (prioritas untuk client kiosk)
     if x_device_api_key and x_device_id:

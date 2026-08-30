@@ -103,15 +103,26 @@ export default function DevicePage() {
         }
         setToken(t);
         loadDevices(t);
-        // PRD-observability-degradasi-offline-first §5.2: ringkasan kesehatan
-        fetch(`${API_BASE}/status-kesehatan`, { headers: { Authorization: `Bearer ${t}` } })
+        // PRD-tuntaskan-device-health: ringkasan kesehatan dari /device/status-kesehatan
+        fetch(`${API_BASE}/device/status-kesehatan`, { headers: { Authorization: `Bearer ${t}` } })
             .then((res) => res.ok ? res.json() : null)
             .then((data) => {
-                if (data) setHealthSummary({
-                    total_device: data.total_device ?? 0,
-                    device_online: data.device_online ?? 0,
-                    device_basi_dan_online: data.device_basi_dan_online ?? 0,
-                });
+                if (Array.isArray(data)) {
+                    const now = Date.now();
+                    const online = data.filter((d) => {
+                        if (!d.online_terakhir) return false;
+                        const ts = new Date(d.online_terakhir).getTime();
+                        return !isNaN(ts) && (now - ts) < 5 * 60 * 1000;
+                    });
+                    const basiOnline = online.filter(
+                        (d) => d.jadwal_bermasalah || d.dispensasi_bermasalah
+                    );
+                    setHealthSummary({
+                        total_device: data.length,
+                        device_online: online.length,
+                        device_basi_dan_online: basiOnline.length,
+                    });
+                }
             })
             .catch(() => { /* ringkasan opsional */ });
     }, [loadDevices]);

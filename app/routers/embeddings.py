@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Siswa, FaceEmbedding, Device
-from app.routers.device import verify_api_key
+from app.services.device_auth import verify_api_key
 
 router = APIRouter(prefix="/embeddings", tags=["embeddings"])
 

@@ -13,29 +13,16 @@ from app.schemas import (
 )
 from app.auth import get_current_guru, require_role
 from app.models import Guru
-from app.routers.device import verify_api_key
+from app.services.device_auth import verify_device
 
 router = APIRouter(prefix="/absensi", tags=["absensi"])
 
 BATAS_AWAL_MASUK_JAM = 2  # absen masuk dibuka 2 jam sebelum jam masuk standar
 
-
-def _verify_device(db: Session, device_id: str, x_device_api_key: str | None) -> Device:
-    """
-    Setiap request dari client (Windows/Android) wajib menyertakan header
-    `X-Device-Api-Key` berisi api_key mentah yang diberikan saat registrasi
-    device (lihat POST /device/register). Server membandingkan hash-nya,
-    bukan menyimpan/membandingkan key mentah.
-    """
-    device = db.query(Device).filter(Device.device_id == device_id, Device.aktif == True).first()
-    if not device:
-        raise HTTPException(status_code=401, detail=f"Device '{device_id}' tidak terdaftar/nonaktif")
-
-    if not x_device_api_key or not verify_api_key(x_device_api_key, device.api_key_hash):
-        raise HTTPException(status_code=401, detail="API key device tidak valid")
-
-    device.last_seen_at = datetime.utcnow()
-    return device
+# Catatan: helper verifikasi device sebelumnya berupa fungsi private
+# `_verify_device` di file ini. Dipindahkan ke app/services/device_auth.py
+# (`verify_device`) supaya bisa dipakai bersama oleh POST /device/{id}/health
+# tanpa impor lintas-router ke simbol bertanda underscore.
 
 
 def _ambil_jadwal_efektif(db: Session, kelas: str | None, tanggal) -> dict | None:
@@ -126,7 +113,7 @@ def sync_absensi(
     disimpan = duplikat = gagal = 0
 
     for rec in body.records:
-        _verify_device(db, rec.device_id, x_device_api_key)
+        verify_device(db, rec.device_id, x_device_api_key)
 
         # Savepoint per-record: kalau 1 record gagal, tidak menggagalkan
         # seluruh batch — record lain dalam batch tetap diproses.
