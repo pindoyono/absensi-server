@@ -9,8 +9,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Siswa, FaceEmbedding, Guru, KonsentrasiKeahlian
-from app.auth import require_role, get_current_guru
+from app.models import Siswa, FaceEmbedding, Guru, Device, KonsentrasiKeahlian
+from app.auth import require_role, get_current_guru, get_guru_or_device
 from app.services.crypto import encrypt_embedding
 
 router = APIRouter(prefix="/siswa", tags=["siswa"])
@@ -207,10 +207,19 @@ def enroll_siswa(
     siswa_id: int,
     body: EnrollRequest,
     db: Session = Depends(get_db),
-    guru: Guru = Depends(require_role("admin", "guru_piket")),
+    auth: Guru | Device = Depends(get_guru_or_device),
 ):
     """Simpan/perbarui embedding wajah siswa (terenkripsi). Bisa dipanggil
-    ulang untuk re-enroll (menimpa embedding lama)."""
+    ulang untuk re-enroll (menimpa embedding lama).
+
+    Menerima DUA auth (PRD_DUKUNGAN_CLIENT_ANDROID.md R-P1-4):
+    - JWT guru (admin / guru_piket) -> `enrolled_oleh` = guru.id
+    - Device API Key (kiosk)        -> `enrolled_device_id` = device.device_id
+    """
+    is_device = isinstance(auth, Device)
+    if not is_device and auth.role not in ("admin", "guru_piket"):
+        raise HTTPException(status_code=403, detail=f"Role '{auth.role}' tidak boleh enroll")
+
     siswa = db.query(Siswa).filter(Siswa.id == siswa_id, Siswa.aktif == True).first()
     if not siswa:
         raise HTTPException(status_code=404, detail="Siswa tidak ditemukan")
@@ -230,10 +239,17 @@ def enroll_siswa(
 
     siswa.enrolled = True
     siswa.tanggal_enrollment = date.today()
-    siswa.enrolled_oleh = guru.id
+    if is_device:
+        siswa.enrolled_oleh = None
+        siswa.enrolled_device_id = auth.device_id
+    else:
+        siswa.enrolled_oleh = auth.id
 
     db.commit()
-    return {"status": "ok", "siswa_id": siswa_id, "enrolled": True}
+    return {
+        "status": "ok", "siswa_id": siswa_id, "enrolled": True,
+        "sumber": "device" if is_device else "guru",
+    }
 
 
 @router.get("/enrollment-progress")

@@ -65,11 +65,39 @@ Response (**api_key hanya tampil sekali di sini** — simpan di konfigurasi loka
 {
   "device_id": "gerbang-utama-01",
   "api_key": "bWPQ6zMvkPZrutPiOGRogQp2auVGrWo2JBlRz8p5vSs",
+  "face_encryption_key": "s6wnLcVDT-5on-ZSWvd9QZcrmLJ1PnYtjFXQZG_lWSw=",
   "peringatan": "Simpan api_key ini sekarang — tidak akan ditampilkan lagi."
 }
 ```
 
+- `face_encryption_key` (Fernet key server, sama dengan yang dipakai `/embeddings/sync`)
+  ikut dikirim di sini supaya client auto-isi tanpa distribusi manual
+  (`docs/PRD_DUKUNGAN_CLIENT_ANDROID.md` R-P1-1). Field ekstra — client lama abaikan.
+  **Server meng-audit-log tiap panggilan** karena endpoint ini membocorkan kunci enkripsi.
+
 ✅ Sudah diuji: register device → dapat api_key → dipakai untuk sync, berhasil end-to-end.
+
+### 1.2 Heartbeat / kesegaran cache device
+
+```
+POST /device/{device_id}/health
+X-Device-Api-Key: <api_key device>          (device_id di path harus device terdaftar)
+{ "jadwal_jam_lalu": 2.5, "dispensasi_jam_lalu": 1.0 }
+```
+`200 → {"status":"ok"}`. Best-effort tiap siklus sync; server memperbarui
+`Device.last_seen_at` + kolom kesegaran (dipantau dashboard `GET /device/status-kesehatan`).
+Client Android boleh mengirim field tambahan (`embedding_hari_lalu`, `pending_kirim`,
+`app_version`) — diabaikan server, bukan error. (Fitur ini milik branch device-health;
+lihat `PRD-observability-degradasi-offline-first`.)
+
+### 1.3 Roster akun (seed login offline device)
+
+```
+GET /auth/roster[?termasuk_nonaktif=1]       (X-Device-Id + X-Device-Api-Key)
+→ { "server_time": "...", "guru": [ {email, nama, role, aktif} ] }
+```
+Client memakai ini men-*seed* `akun_lokal` untuk login offline — role = sumber
+kebenaran server. **Tidak** mengirim password/hash. PRD R-P1-2.
 
 ---
 
@@ -79,14 +107,18 @@ Response (**api_key hanya tampil sekali di sini** — simpan di konfigurasi loka
 
 ```
 POST /siswa/{siswa_id}/enroll
-Authorization: Bearer <JWT admin atau guru_piket>
+Authorization: Bearer <JWT admin/guru_piket>   ── ATAU ──   X-Device-Id + X-Device-Api-Key
 Content-Type: application/json
 
 {
-  "embedding": [0.123, -0.456, ...],   // vector dari engine MiniFASNet, minimal 64 nilai
-  "model_version": "minifasnet-v1"
+  "embedding": [0.123, -0.456, ...],   // vector dari engine, minimal 64 nilai
+  "model_version": "arcface-android-v1"
 }
 ```
+
+Menerima **device-auth** juga (PRD R-P1-4) — enrollment dari kiosk langsung naik ke
+server. Response menyertakan `"sumber": "guru" | "device"`; untuk device,
+`siswa.enrolled_device_id` diisi & `enrolled_oleh` = NULL.
 
 Alur di client saat proses enrollment (lihat detail lengkap di dokumen arsitektur bagian 10.2):
 1. Ambil 3-5 foto wajah dari sudut berbeda
@@ -166,6 +198,12 @@ Content-Type: application/json
 - `record_id` dibuat DI CLIENT saat capture (pakai UUID v4), **bukan** ditunggu dari server. Ini yang membuat retry aman.
 - Boleh kirim banyak record sekaligus dalam 1 array (batch) — penting untuk kasus device lama offline lalu online, ada banyak antrian record.
 - Kirim ulang record yang gagal sync tanpa mengubah `record_id`-nya — server akan mengenali sebagai retry, bukan data baru.
+- `jam_aktual` **wajib datetime penuh** (ISO 8601, `YYYY-MM-DDThh:mm:ss[±zz]`), bukan jam saja.
+- `status_kehadiran_otomatis`: `NORMAL` | `TERLAMBAT` | `PULANG_CEPAT` | `IZIN` | `SAKIT`
+  | `DISPENSASI_KEGIATAN` | `LAINNYA`. Untuk absen PULANG sebelum jam pulang, kirim
+  kategori dispensasi (mis. `SAKIT`) — server cek ada `Dispensasi` aktif; kalau tidak,
+  record itu `status="ditolak_kebijakan"` (batch lain tetap diproses). Nilai kategori
+  ini dulu memicu **422 seluruh batch** — sekarang diterima (PRD R-P0-1).
 
 Response:
 

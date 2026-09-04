@@ -37,6 +37,9 @@ class Siswa(Base):
     enrolled = Column(Boolean, default=False)
     tanggal_enrollment = Column(Date)
     enrolled_oleh = Column(Integer, ForeignKey("guru.id"))
+    # Diisi bila enrollment dilakukan dari kiosk (device-auth), bukan guru via dashboard.
+    # PRD_DUKUNGAN_CLIENT_ANDROID.md R-P1-4. enrolled_oleh = NULL saat sumber = device.
+    enrolled_device_id = Column(String(50))
     aktif = Column(Boolean, default=True)
     dibuat_pada = Column(DateTime, server_default=func.now())
 

@@ -15,8 +15,21 @@ class GoogleLoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     access_token: str
+    email: str
     nama: str
     role: str
+
+
+# Nilai `status_kehadiran_otomatis` yang boleh dikirim client saat sync.
+# Client (Windows & Android) mengirim kategori dispensasi apa adanya untuk
+# absen pulang cepat berdispensasi (IZIN/SAKIT/DISPENSASI_KEGIATAN/LAINNYA) —
+# lihat docs/PRD_DUKUNGAN_CLIENT_ANDROID.md R-P0-1. Tanpa ini seluruh batch
+# sync 422 hanya karena satu record berdispensasi.
+StatusKehadiran = Literal[
+    "NORMAL", "TERLAMBAT", "PULANG_CEPAT",
+    "IZIN", "SAKIT", "DISPENSASI_KEGIATAN", "LAINNYA",
+]
+KATEGORI_DISPENSASI = {"IZIN", "SAKIT", "DISPENSASI_KEGIATAN", "LAINNYA"}
 
 
 class AbsensiRecordIn(BaseModel):
@@ -27,7 +40,7 @@ class AbsensiRecordIn(BaseModel):
     tanggal: date
     type: Literal["MASUK", "PULANG"]
     jam_aktual: datetime
-    status_kehadiran_otomatis: Literal["NORMAL", "TERLAMBAT", "PULANG_CEPAT"] = "NORMAL"
+    status_kehadiran_otomatis: StatusKehadiran = "NORMAL"
     catatan: Optional[str] = None
     device_id: str
 

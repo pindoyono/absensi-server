@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.models import Device, Guru
 from app.auth import require_role, get_current_guru
@@ -90,9 +91,18 @@ def register_device(
     db.add(row)
     db.commit()
 
+    # face_encryption_key (Fernet key server) ikut dikirim di sini — sekali, lewat
+    # HTTPS — supaya client Android/Windows auto-isi tanpa distribusi manual.
+    # PRD_DUKUNGAN_CLIENT_ANDROID.md R-P1-1. Endpoint ini membocorkan kunci
+    # enkripsi embedding: audit-log tiap panggilan.
+    print(
+        f"AUDIT device.register device_id={device_id} oleh guru_id={guru.id} "
+        f"({guru.email}) pada {datetime.utcnow().isoformat()}"
+    )
     return {
         "device_id": device_id,
         "api_key": raw_key,  # tampil SEKALI SAJA, simpan baik-baik
+        "face_encryption_key": settings.face_encryption_key,
         "peringatan": "Simpan device_id & api_key ini sekarang — tidak akan ditampilkan lagi.",
     }
 
