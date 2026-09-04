@@ -14,6 +14,7 @@ interface Device {
     aktif: boolean;
     last_seen_at: string | null;
     dibuat_pada: string | null;
+    raw_api_key: string | null;
     // PRD-observability-degradasi-offline-first §5.1
     jadwal_jam_lalu: number | null;
     dispensasi_jam_lalu: number | null;
@@ -276,6 +277,7 @@ export default function DevicePage() {
                             <thead>
                                 <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">
                                     <th className="py-3 px-4 text-left">Device ID</th>
+                                    <th className="py-3 px-4 text-left">Device Key</th>
                                     <th className="py-3 px-4 text-left">Lokasi</th>
                                     <th className="py-3 px-4 text-left">Platform</th>
                                     <th className="py-3 px-4 text-left">Status</th>
@@ -287,7 +289,36 @@ export default function DevicePage() {
                             <tbody>
                                 {devices.map((d) => (
                                     <tr key={d.device_id} className="border-b border-slate-100 hover:bg-slate-50 transition">
-                                        <td className="py-3 px-4 font-mono text-xs text-slate-700">{d.device_id}</td>
+                                        <td className="py-3 px-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-mono text-xs text-slate-700">{d.device_id}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => copyKey(d.device_id)}
+                                                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                                    title="Salin Device ID"
+                                                >
+                                                    {copied ? "Tersalin!" : "Copy"}
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td className="py-3 px-4">
+                                            {d.raw_api_key ? (
+                                                <div className="flex items-center gap-2">
+                                                    <code className="font-mono text-xs text-slate-700 break-all max-w-[200px]">{d.raw_api_key}</code>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => copyKey(d.raw_api_key!)}
+                                                        className="text-xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+                                                        title="Salin Device Key"
+                                                    >
+                                                        {copied ? "Tersalin!" : "Copy"}
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-slate-400">—</span>
+                                            )}
+                                        </td>
                                         <td className="py-3 px-4 text-slate-700">{d.nama_lokasi || "-"}</td>
                                         <td className="py-3 px-4">
                                             <Badge variant="default">{d.platform || "-"}</Badge>

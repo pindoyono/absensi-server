@@ -26,6 +26,7 @@ class DeviceOut(BaseModel):
     aktif: bool
     last_seen_at: datetime | None = None
     dibuat_pada: datetime | None = None
+    raw_api_key: str | None = None
     # PRD-observability-degradasi-offline-first §5.1: kesegaran data
     jadwal_jam_lalu: float | None = None
     dispensasi_jam_lalu: float | None = None
@@ -84,6 +85,7 @@ def register_device(
         nama_lokasi=body.nama_lokasi,
         platform=body.platform,
         api_key_hash=hash_api_key(raw_key),
+        raw_api_key=raw_key,
     )
     db.add(row)
     db.commit()
@@ -107,6 +109,7 @@ def regenerate_key(
 
     raw_key = secrets.token_urlsafe(32)
     device.api_key_hash = hash_api_key(raw_key)
+    device.raw_api_key = raw_key
     db.commit()
     return {"device_id": device_id, "api_key": raw_key}
 

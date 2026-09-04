@@ -65,6 +65,7 @@ class Device(Base):
     nama_lokasi = Column(String(100))
     platform = Column(String(20))
     api_key_hash = Column(String(200), nullable=False)
+    raw_api_key = Column(String(200), nullable=True)
     last_seen_at = Column(DateTime)
     aktif = Column(Boolean, default=True)
     dibuat_pada = Column(DateTime, server_default=func.now())
