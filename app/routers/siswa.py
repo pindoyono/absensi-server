@@ -62,8 +62,15 @@ def list_siswa(
     kelas: Optional[str] = None,
     enrolled: Optional[bool] = None,
     db: Session = Depends(get_db),
-    guru: Guru = Depends(get_current_guru),
+    auth: Guru | Device = Depends(get_guru_or_device),
 ):
+    """Daftar siswa aktif — SELURUH roster (bukan hanya yang sudah enroll).
+
+    Menerima JWT guru (dashboard web) ATAU Device API Key (kiosk Android):
+    kiosk butuh roster lengkap untuk layar "Data Siswa" dan untuk memilih
+    siswa yang BELUM enroll di layar Enrollment. `GET /embeddings/sync` hanya
+    mengirim siswa yang sudah punya embedding, jadi tidak cukup untuk itu.
+    """
     q = db.query(Siswa).filter(Siswa.aktif == True)
     if kelas:
         q = q.filter(Siswa.kelas == kelas)

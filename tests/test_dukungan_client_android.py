@@ -182,3 +182,31 @@ def test_enroll_device_siswa_tidak_ada_404(client):
     r = client.post("/siswa/999/enroll", headers=DEV,
                     json={"embedding": [0.1] * 64, "model_version": "v1"})
     assert r.status_code == 404
+
+
+# ---------- GET /siswa via device-auth (roster lengkap untuk kiosk) ----------
+
+def test_list_siswa_via_device_auth_roster_lengkap(client, db_session):
+    # 3 siswa: 1 sudah enroll, 2 belum. Kiosk harus dapat ketiganya.
+    db_session.add(models.Siswa(id=2, nis="12346", nama="Ani", kelas="XI", aktif=True))
+    db_session.add(models.Siswa(id=3, nis="12347", nama="Cici", kelas="XII", aktif=True))
+    db_session.query(models.Siswa).filter_by(id=1).update({"enrolled": True})
+    db_session.commit()
+
+    r = client.get("/siswa", headers=DEV)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert {s["nis"] for s in data} == {"12345", "12346", "12347"}
+    assert {s["enrolled"] for s in data if s["nis"] == "12345"} == {True}
+
+
+def test_list_siswa_tanpa_auth_401(client):
+    assert client.get("/siswa").status_code == 401
+
+
+def test_list_siswa_hanya_siswa_aktif(client, db_session):
+    db_session.add(models.Siswa(id=2, nis="99999", nama="Alumni", kelas="XII", aktif=False))
+    db_session.commit()
+    r = client.get("/siswa", headers=DEV)
+    assert r.status_code == 200
+    assert all(s["nis"] != "99999" for s in r.json())
