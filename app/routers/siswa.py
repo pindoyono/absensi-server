@@ -135,6 +135,45 @@ def deactivate_siswa(
     db.commit()
     return {"status": "ok", "siswa_id": siswa_id, "aktif": False}
 
+
+@router.post("/{siswa_id}/aktifkan")
+def aktifkan_siswa(
+    siswa_id: int,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin")),
+):
+    """
+    Kebalikan dari DELETE /siswa/{id} — satu-satunya jalan mengembalikan
+    siswa yang keliru dinonaktifkan (manual, atau oleh cron retensi wajah
+    di app/routers/retensi.py — mis. siswa program 4 tahun yang salah
+    ditandai kedaluwarsa umur embedding-nya, lihat docs/API_CONTRACT.md
+    bagian 3a). Tanpa endpoint ini, penonaktifan tidak bisa dibatalkan
+    lewat API sama sekali (PUT /siswa/{id} tidak menerima field `aktif`,
+    dan POST /enroll menolak siswa yang aktif=False — lihat catatan di
+    enroll_siswa di bawah).
+
+    Kalau embedding wajahnya belum terlanjur dihapus permanen (masih
+    dalam jeda propagasi 7 hari retensi), siswa langsung bisa absen lagi
+    setelah kiosk sync berikutnya. Kalau sudah terlanjur dihapus, siswa
+    tetap harus di-enroll ulang wajahnya — tapi sekarang endpoint enroll
+    tidak lagi menolaknya karena aktif sudah True lagi.
+    """
+    row = db.query(Siswa).filter(Siswa.id == siswa_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Siswa tidak ditemukan")
+    if row.aktif:
+        return {"status": "ok", "siswa_id": siswa_id, "aktif": True, "embedding_tersedia": None}
+
+    row.aktif = True
+    emb = db.query(FaceEmbedding).filter(FaceEmbedding.siswa_id == siswa_id).first()
+    if emb:
+        # Bump supaya client yang sync incremental (diperbarui_sejak) tetap
+        # menerima status aktif=true ini pada siklus sync berikutnya.
+        emb.diperbarui_pada = datetime.utcnow()
+    db.commit()
+    return {"status": "ok", "siswa_id": siswa_id, "aktif": True, "embedding_tersedia": emb is not None}
+
+
 @router.get("/template-csv")
 def download_template_siswa_csv(
     db: Session = Depends(get_db),

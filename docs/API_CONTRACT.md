@@ -171,6 +171,49 @@ Response:
 
 ---
 
+## 3a. Retensi Data Wajah (Auto-Expire)
+
+Data wajah (embedding) TIDAK disimpan selamanya. Server membatasi retensi
+maksimum **~3 tahun 1 bulan sejak enrollment pertama** (siklus SMK 3 tahun
++ buffer 1 bulan) lewat endpoint yang dipanggil cron OS, bukan manual dari
+dashboard:
+
+```
+POST /admin/retensi/bersihkan-wajah
+X-Retensi-Secret: <RETENSI_CRON_SECRET dari .env>
+```
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "dinonaktifkan": 2,
+  "dihapus_permanen": 1,
+  "siswa_id_dihapus_permanen": [42],
+  "batas_umur_hari": 1125
+}
+```
+
+**Alur dua fase** (aman dipanggil berulang, mis. cron harian):
+1. Siswa **aktif** yang embedding-nya sudah lewat umur → dinonaktifkan (`aktif=False`), `FaceEmbedding.diperbarui_pada` di-bump. Efeknya SAMA seperti `DELETE /siswa/{id}` manual: kiosk menerima `aktif: false` di sync berikutnya dan menghapus cache lokalnya (bagian 3 di atas).
+2. Siswa yang **sudah nonaktif** (dari fase 1, atau dinonaktifkan admin manual sebelumnya) DAN sudah melewati jeda propagasi 7 hari sejak `diperbarui_pada` → embedding dihapus **permanen** dari database server. Baris `siswa` dan riwayat `absensi` TIDAK ikut terhapus — tetap ada untuk laporan/arsip sekolah.
+
+Jeda 7 hari di fase 2 penting: tanpa itu, kiosk yang sedang offline saat baris dihapus tidak akan pernah menerima sinyal `aktif=false` (barisnya sudah lenyap dari hasil JOIN di `GET /embeddings/sync`), sehingga cache lokalnya jadi yatim selamanya alih-alih terhapus bersih.
+
+**Kalau fase 1 salah menonaktifkan siswa** (mis. siswa program 4 tahun — lihat `KonsentrasiKeahlian.durasi_tahun` — yang seharusnya belum kedaluwarsa tapi flat cutoff 3th1bln tidak membedakan durasi program), pakai:
+
+```
+POST /siswa/{siswa_id}/aktifkan
+Authorization: Bearer <JWT admin>
+```
+
+Mengembalikan `aktif=True`. Kalau embedding-nya belum terlanjur dihapus permanen (masih dalam jeda 7 hari), siswa langsung bisa absen lagi setelah kiosk sync berikutnya (`embedding_tersedia: true`). Kalau sudah terlanjur dihapus, siswa perlu di-enroll ulang wajahnya (`embedding_tersedia: false`) — endpoint `POST /siswa/{id}/enroll` sekarang menerima lagi karena `aktif` sudah `True`.
+
+**Setup cron** (lihat `docs/DEPLOYMENT.md` bagian retensi): jalankan endpoint ini sekali sehari. Endpoint menolak (503) kalau `RETENSI_CRON_SECRET` belum diisi di `.env` — aman secara default, harus sengaja diaktifkan.
+
+---
+
 ## 4. Sync Absensi — Endpoint Paling Kritis
 
 ```

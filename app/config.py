@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     # python -c "from app.services.crypto import generate_new_key; print(generate_new_key())"
     face_encryption_key: str = "s6wnLcVDT-5on-ZSWvd9QZcrmLJ1PnYtjFXQZG_lWSw="
 
+    # Secret statis untuk endpoint retensi data wajah (dipanggil cron OS,
+    # bukan user login) — lihat app/routers/retensi.py. Kosong = endpoint
+    # menolak semua request (aman-default, harus sengaja diisi di production).
+    retensi_cron_secret: str = ""
+
     class Config:
         env_file = ".env"
         extra = "ignore"

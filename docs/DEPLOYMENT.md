@@ -172,6 +172,24 @@ Simpan backup di lokasi terpisah dari server utama (Google Drive sekolah yang su
 
 ---
 
+## 6a. Retensi Data Wajah (Auto-Expire, wajib untuk kepatuhan privasi)
+
+Data wajah siswa TIDAK boleh disimpan selamanya — batasi maksimum ~3 tahun
+1 bulan sejak enrollment (lihat `docs/API_CONTRACT.md` bagian 3a untuk detail
+kebijakan dua-fase-nya). Ini butuh:
+
+1. Isi `RETENSI_CRON_SECRET` di `.env` (generate: `openssl rand -hex 32`) — endpoint menolak semua request kalau ini kosong.
+2. Jadwalkan cron harian yang memanggil endpoint pembersihan:
+
+```bash
+# Contoh cron harian jam 3 pagi (setelah backup jam 2)
+0 3 * * * curl -s -X POST -H "X-Retensi-Secret: ISI_SAMA_DENGAN_ENV" http://localhost:8000/admin/retensi/bersihkan-wajah >> /var/log/retensi-wajah.log 2>&1
+```
+
+Pakai `http://localhost:8000` (port internal, langsung ke uvicorn/container), bukan domain publik lewat nginx — supaya secret ini tidak perlu lewat internet sama sekali.
+
+---
+
 ## 7. Monitoring Dasar
 
 ```bash
@@ -196,4 +214,5 @@ Endpoint `/health` bisa dipakai untuk monitoring uptime sederhana (misal cron ya
 - [ ] Migration Alembic sudah dijalankan (`alembic upgrade head`)
 - [ ] Minimal 1 akun guru dengan role `admin` sudah di-insert manual ke tabel `guru` (lihat `docs/API_CONTRACT.md` bagian login)
 - [ ] Backup database terjadwal aktif
+- [ ] `RETENSI_CRON_SECRET` terisi + cron harian retensi data wajah aktif (bagian 6a)
 - [ ] Test end-to-end: login Google → create siswa → register device → sync absensi → cek anti-duplikasi (skenario sudah dicontohkan di `docs/API_CONTRACT.md`)

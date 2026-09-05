@@ -160,6 +160,70 @@ def test_delete_siswa_menonaktifkan_dan_terkirim_di_sync(client, db_session):
     assert data["data"][0]["aktif"] is False
 
 
+# ─── Aktifkan kembali (kebalikan dari DELETE /siswa/{id}) ────
+
+def test_aktifkan_kembali_siswa_yang_dinonaktifkan(client, db_session):
+    _seed_siswa_dengan_embedding(db_session, siswa_id=1, nis="22001",
+                                 nama="Ahmad", kelas="XI", aktif=False)
+
+    from app.auth import issue_internal_jwt
+    from types import SimpleNamespace
+    token = issue_internal_jwt(SimpleNamespace(id=1, email="admin@sekolah.sch.id", role="admin"))
+    headers = {"Authorization": f"Bearer {token}"}
+
+    r = client.post("/siswa/1/aktifkan", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["aktif"] is True
+    assert body["embedding_tersedia"] is True
+
+    row = db_session.query(models.Siswa).filter(models.Siswa.id == 1).first()
+    assert row.aktif is True
+
+    # sync mengirim status aktif lagi
+    data = _sync(client)
+    assert data["jumlah"] == 1
+    assert data["data"][0]["aktif"] is True
+
+
+def test_aktifkan_siswa_yang_embeddingnya_sudah_terlanjur_dihapus(client, db_session):
+    siswa = models.Siswa(id=1, nis="22001", nama="Ahmad", kelas="XI", aktif=False)
+    db_session.add(siswa)
+    db_session.commit()  # tidak ada FaceEmbedding sama sekali — sudah dihapus permanen
+
+    from app.auth import issue_internal_jwt
+    from types import SimpleNamespace
+    token = issue_internal_jwt(SimpleNamespace(id=1, email="admin@sekolah.sch.id", role="admin"))
+
+    r = client.post("/siswa/1/aktifkan", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["aktif"] is True
+    assert body["embedding_tersedia"] is False  # perlu enroll ulang
+
+
+def test_aktifkan_siswa_yang_sudah_aktif_tidak_error(client, db_session):
+    _seed_siswa_dengan_embedding(db_session, siswa_id=1, nis="22001",
+                                 nama="Ahmad", kelas="XI", aktif=True)
+
+    from app.auth import issue_internal_jwt
+    from types import SimpleNamespace
+    token = issue_internal_jwt(SimpleNamespace(id=1, email="admin@sekolah.sch.id", role="admin"))
+
+    r = client.post("/siswa/1/aktifkan", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    assert r.json()["aktif"] is True
+
+
+def test_aktifkan_siswa_tidak_ada(client, db_session):
+    from app.auth import issue_internal_jwt
+    from types import SimpleNamespace
+    token = issue_internal_jwt(SimpleNamespace(id=1, email="admin@sekolah.sch.id", role="admin"))
+
+    r = client.post("/siswa/999/aktifkan", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 404
+
+
 # ─── Auth device tetap berlaku ───────────────────────────────
 
 def test_sync_api_key_salah(client):
