@@ -19,6 +19,8 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    environment:
+      TZ: Asia/Makassar        # WITA — dasar "hari ini" untuk jadwal/laporan
     depends_on:
       db:
         condition: service_healthy

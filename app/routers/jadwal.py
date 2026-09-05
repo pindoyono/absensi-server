@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import JadwalStandar, JadwalOverride, Guru, Device
 from app.auth import require_role, get_current_guru, get_guru_or_device
+from app.services.waktu import hari_ini
 
 router = APIRouter(prefix="/jadwal", tags=["jadwal"])
 
@@ -195,7 +196,7 @@ def jadwal_efektif_hari_ini(
     dulu, baru fallback ke jadwal standar. Ini logika yang sama yang
     harus diimplementasikan di client (jadwal di-cache ke client saat
     sync, supaya tetap valid dipakai walau offline)."""
-    today = date.today()
+    today = hari_ini()  # tanggal WITA — server bisa jalan di UTC
     hari_nama = ["SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", None, None][today.weekday()]
 
     override = (

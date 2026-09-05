@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Absensi, Siswa, Guru
 from app.auth import get_current_guru
+from app.services.waktu import hari_ini
 
 router = APIRouter(prefix="/laporan", tags=["laporan"])
 
@@ -79,7 +80,7 @@ def rekap_kehadiran(
 @router.get("/ringkasan-hari-ini")
 def ringkasan_hari_ini(db: Session = Depends(get_db), guru: Guru = Depends(get_current_guru)):
     """Angka ringkas untuk kartu di bagian atas dashboard guru piket."""
-    today = date.today()
+    today = hari_ini()  # tanggal WITA
 
     total_siswa = db.query(Siswa).filter(Siswa.aktif == True).count()
 

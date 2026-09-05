@@ -97,6 +97,12 @@ sudo systemctl enable --now absensi-server
 sudo systemctl status absensi-server
 ```
 
+> **Zona waktu server.** Logika "hari ini" (jadwal, override, laporan) memakai
+> `app/services/waktu.hari_ini()` dengan offset tetap **WITA (UTC+8)**, jadi
+> benar walau OS server di UTC. Untuk konsistensi log & tanggal OS, set juga
+> zona server: Docker Compose sudah menyetel `TZ=Asia/Makassar` untuk service
+> `api`; pada systemd jalankan `sudo timedatectl set-timezone Asia/Makassar`.
+
 ---
 
 ## 2. Variabel `.env` — Penjelasan Lengkap

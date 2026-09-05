@@ -14,6 +14,7 @@ from app.schemas import (
 from app.auth import get_current_guru, require_role
 from app.models import Guru
 from app.services.device_auth import verify_device
+from app.services.waktu import hari_ini
 
 router = APIRouter(prefix="/absensi", tags=["absensi"])
 
@@ -202,11 +203,10 @@ def list_perlu_verifikasi(
     piket: status otomatisnya bukan NORMAL, ATAU ditandai lokasi mock (fake
     GPS) oleh client. Record lokasi_mock tetap tersimpan (tidak ditolak) —
     di sinilah guru piket melihat & memutuskannya."""
-    from datetime import date
     rows = (
         db.query(Absensi)
         .filter(
-            Absensi.tanggal == date.today(),
+            Absensi.tanggal == hari_ini(),
             Absensi.status_kehadiran_final.is_(None),
             or_(
                 Absensi.status_kehadiran_otomatis != "NORMAL",

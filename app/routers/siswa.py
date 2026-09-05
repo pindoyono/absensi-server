@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models import Siswa, FaceEmbedding, Guru, Device, KonsentrasiKeahlian, Absensi
 from app.auth import require_role, get_current_guru, get_guru_or_device, get_current_siswa
 from app.services.crypto import encrypt_embedding
+from app.services.waktu import hari_ini
 
 router = APIRouter(prefix="/siswa", tags=["siswa"])
 
@@ -293,7 +294,7 @@ def enroll_siswa(
         ))
 
     siswa.enrolled = True
-    siswa.tanggal_enrollment = date.today()
+    siswa.tanggal_enrollment = hari_ini()  # tanggal WITA
     if is_device:
         siswa.enrolled_oleh = None
         siswa.enrolled_device_id = auth.device_id

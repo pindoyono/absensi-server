@@ -256,8 +256,13 @@ def test_sync_tanpa_field_lokasi_mock_default_false(client, db_session):
 
 
 def test_record_lokasi_mock_muncul_di_perlu_verifikasi(client, db_session):
+    from app.services.waktu import hari_ini
     rid = str(uuid.uuid4())
-    client.post("/absensi/sync", json={"records": [_rec(record_id=rid, lokasi_mock=True)]}, headers=DEV)
+    hari = hari_ini().isoformat()  # /perlu-verifikasi memfilter berdasarkan tanggal WITA
+    client.post("/absensi/sync", json={"records": [
+        _rec(record_id=rid, lokasi_mock=True, tanggal=hari,
+             jam_aktual=datetime.combine(hari_ini(), time(7, 5)).isoformat())
+    ]}, headers=DEV)
     r = client.get("/absensi/perlu-verifikasi", headers=_piket_headers(db_session))
     assert r.status_code == 200, r.text
     hit = [x for x in r.json() if str(x["record_id"]) == rid]
@@ -265,7 +270,12 @@ def test_record_lokasi_mock_muncul_di_perlu_verifikasi(client, db_session):
 
 
 def test_record_normal_tanpa_mock_tidak_muncul_di_perlu_verifikasi(client, db_session):
+    from app.services.waktu import hari_ini
     rid = str(uuid.uuid4())
-    client.post("/absensi/sync", json={"records": [_rec(record_id=rid)]}, headers=DEV)
+    hari = hari_ini().isoformat()
+    client.post("/absensi/sync", json={"records": [
+        _rec(record_id=rid, tanggal=hari,
+             jam_aktual=datetime.combine(hari_ini(), time(7, 5)).isoformat())
+    ]}, headers=DEV)
     r = client.get("/absensi/perlu-verifikasi", headers=_piket_headers(db_session))
     assert all(str(x["record_id"]) != rid for x in r.json())
