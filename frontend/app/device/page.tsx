@@ -81,6 +81,8 @@ export default function DevicePage() {
     // Hasil registrasi (api_key tampil sekali)
     const [regResult, setRegResult] = useState<{ device_id: string; api_key: string } | null>(null);
     const [copied, setCopied] = useState(false);
+    // ID teks yang sedang disalin di tabel (per-baris, bukan global)
+    const [copiedId, setCopiedId] = useState<string | null>(null);
 
     // Aksi per baris
     const [busyId, setBusyId] = useState<string | null>(null);
@@ -264,6 +266,17 @@ export default function DevicePage() {
         }
     };
 
+    // Salin teks per-baris di tabel (state terpisah agar "Tersalin!" tidak muncul di semua baris)
+    const copyCell = async (id: string, key: string) => {
+        try {
+            await navigator.clipboard.writeText(key);
+            setCopiedId(id);
+            setTimeout(() => setCopiedId(null), 2000);
+        } catch {
+            /* clipboard tidak tersedia */
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
@@ -336,31 +349,31 @@ export default function DevicePage() {
                             </thead>
                             <tbody>
                                 {devices.map((d) => (
-                                    <tr key={d.device_id} className="border-b border-slate-100 hover:bg-slate-50 transition">
+                                    <tr key={d.device_id} className="border-b border-slate-100 hover:bg-slate-50 transition align-top">
                                         <td className="py-3 px-4">
                                             <div className="flex items-center gap-2">
-                                                <span className="font-mono text-xs text-slate-700">{d.device_id}</span>
+                                                <span className="font-mono text-xs text-slate-700 break-all max-w-[160px]">{d.device_id}</span>
                                                 <button
                                                     type="button"
-                                                    onClick={() => copyKey(d.device_id)}
-                                                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                                    onClick={() => copyCell(`id-${d.device_id}`, d.device_id)}
+                                                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
                                                     title="Salin Device ID"
                                                 >
-                                                    {copied ? "Tersalin!" : "Copy"}
+                                                    {copiedId === `id-${d.device_id}` ? "Tersalin!" : "Copy"}
                                                 </button>
                                             </div>
                                         </td>
                                         <td className="py-3 px-4">
                                             {d.raw_api_key ? (
-                                                <div className="flex items-center gap-2">
-                                                    <code className="font-mono text-xs text-slate-700 break-all max-w-[200px]">{d.raw_api_key}</code>
+                                                <div className="flex items-start gap-2">
+                                                    <code className="font-mono text-xs text-slate-700 break-all max-w-[200px] line-clamp-3">{d.raw_api_key}</code>
                                                     <button
                                                         type="button"
-                                                        onClick={() => copyKey(d.raw_api_key!)}
+                                                        onClick={() => copyCell(`key-${d.device_id}`, d.raw_api_key!)}
                                                         className="text-xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
                                                         title="Salin Device Key"
                                                     >
-                                                        {copied ? "Tersalin!" : "Copy"}
+                                                        {copiedId === `key-${d.device_id}` ? "Tersalin!" : "Copy"}
                                                     </button>
                                                 </div>
                                             ) : (
@@ -415,40 +428,42 @@ export default function DevicePage() {
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="py-3 px-4 text-center space-x-2 whitespace-nowrap">
-                                            <Button
-                                                variant="secondary"
-                                                className="text-xs px-2 py-1"
-                                                onClick={() => setLokasiDevice(d)}
-                                            >
-                                                Atur Lokasi
-                                            </Button>
-                                            <Button
-                                                variant="secondary"
-                                                className="text-xs px-2 py-1"
-                                                disabled={busyId === d.device_id}
-                                                onClick={() => handleRegenerate(d.device_id)}
-                                            >
-                                                Regenerate Key
-                                            </Button>
-                                            {d.aktif && (
+                                        <td className="py-3 px-4">
+                                            <div className="flex flex-wrap gap-2 justify-center max-w-[280px]">
                                                 <Button
-                                                    variant="danger"
+                                                    variant="secondary"
+                                                    className="text-xs px-2 py-1"
+                                                    onClick={() => setLokasiDevice(d)}
+                                                >
+                                                    Atur Lokasi
+                                                </Button>
+                                                <Button
+                                                    variant="secondary"
                                                     className="text-xs px-2 py-1"
                                                     disabled={busyId === d.device_id}
-                                                    onClick={() => handleDeactivate(d.device_id)}
+                                                    onClick={() => handleRegenerate(d.device_id)}
                                                 >
-                                                    Nonaktifkan
+                                                    Regenerate Key
                                                 </Button>
-                                            )}
-                                            <Button
-                                                variant="danger"
-                                                className="text-xs px-2 py-1 bg-rose-700 hover:bg-rose-800"
-                                                disabled={busyId === d.device_id}
-                                                onClick={() => handleHardDelete(d.device_id)}
-                                            >
-                                                Hapus
-                                            </Button>
+                                                {d.aktif && (
+                                                    <Button
+                                                        variant="danger"
+                                                        className="text-xs px-2 py-1"
+                                                        disabled={busyId === d.device_id}
+                                                        onClick={() => handleDeactivate(d.device_id)}
+                                                    >
+                                                        Nonaktifkan
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    variant="danger"
+                                                    className="text-xs px-2 py-1 bg-rose-700 hover:bg-rose-800"
+                                                    disabled={busyId === d.device_id}
+                                                    onClick={() => handleHardDelete(d.device_id)}
+                                                >
+                                                    Hapus
+                                                </Button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}

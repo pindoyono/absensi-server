@@ -16,8 +16,8 @@ L.Icon.Default.mergeOptions({
     shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-// Fallback kalau device belum pernah punya titik lokasi — sekitar Malinau.
-const DEFAULT_CENTER: [number, number] = [-3.4295, 116.4396];
+// Fallback kalau device belum pernah punya titik lokasi — SMKN 2 Malinau.
+const DEFAULT_CENTER: [number, number] = [3.5728, 116.6286];
 
 interface LokasiMapModalProps {
     deviceId: string;
@@ -87,15 +87,31 @@ export default function LokasiMapModal({
                     </div>
                 )}
 
-                <div className="h-80 w-full rounded-lg overflow-hidden border border-slate-200 mb-4">
+                <div className="h-80 w-full rounded-lg overflow-hidden border border-slate-200 mb-4 relative">
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            const el = e.currentTarget.parentElement;
+                            if (!el) return;
+                            if (document.fullscreenElement) {
+                                document.exitFullscreen().catch(() => { });
+                            } else {
+                                el.requestFullscreen().catch(() => { });
+                            }
+                        }}
+                        className="absolute top-2 right-2 z-[1000] bg-white/90 hover:bg-white text-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-md shadow border border-slate-200"
+                        title="Layar penuh"
+                    >
+                        ⛶ Fullscreen
+                    </button>
                     <MapContainer
                         center={posisi ?? DEFAULT_CENTER}
                         zoom={posisi ? 17 : 13}
                         style={{ height: "100%", width: "100%" }}
                     >
                         <TileLayer
-                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                            attribution='&copy; <a href="https://www.esri.com">Esri</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                         />
                         <KlikUntukPin onPick={(lat, lng) => setPosisi([lat, lng])} />
                         {posisi && (
