@@ -97,14 +97,14 @@ def test_set_lokasi_bukan_admin_ditolak(client, db_session):
     assert r.status_code == 403
 
 
-# ─── Cek lokasi (kiosk) — device TANPA lokasi diatur ──────────
+# ─── Cek lokasi (kiosk) — device TANPA lokasi diatur (fail-closed) ────
 
-def test_cek_lokasi_device_belum_diatur_selalu_valid(client, db_session):
+def test_cek_lokasi_device_belum_diatur_ditolak(client, db_session):
     r = client.post("/device/kiosk-geo/lokasi/cek", headers=DEVICE_HEADERS,
-                    json={"tersedia": True, "lat": 0.0, "lng": 0.0})  # jauh sekali, tetap valid
+                    json={"tersedia": True, "lat": TITIK_LAT, "lng": TITIK_LNG})  # tepat di titik pun tetap ditolak
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["valid"] is True
+    assert body["valid"] is False
     assert "belum diatur" in body["alasan"]
 
 

@@ -215,4 +215,5 @@ Endpoint `/health` bisa dipakai untuk monitoring uptime sederhana (misal cron ya
 - [ ] Minimal 1 akun guru dengan role `admin` sudah di-insert manual ke tabel `guru` (lihat `docs/API_CONTRACT.md` bagian login)
 - [ ] Backup database terjadwal aktif
 - [ ] `RETENSI_CRON_SECRET` terisi + cron harian retensi data wajah aktif (bagian 6a)
+- [ ] **PENTING — geofencing bersifat fail-closed (bagian 1.4):** SEMUA device yang sudah terdaftar (termasuk yang sudah lama jalan) wajib diatur lokasinya (`PUT /device/{id}/lokasi` dari dashboard) sebelum/segera setelah deploy ini — device yang belum diatur akan langsung berhenti menerima absensi begitu kiosk-nya sync
 - [ ] Test end-to-end: login Google → create siswa → register device → sync absensi → cek anti-duplikasi (skenario sudah dicontohkan di `docs/API_CONTRACT.md`)

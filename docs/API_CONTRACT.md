@@ -101,10 +101,13 @@ kebenaran server. **Tidak** mengirim password/hash. PRD R-P1-2.
 
 ### 1.4 Geofencing per device
 
-Membatasi kiosk agar hanya bisa dipakai absen di lokasi fisik tertentu. Opt-in
-per device — device yang belum diatur lokasinya (`lokasi_lat`/`lng` NULL)
-tidak pernah diblokir, jadi fitur ini aman ditambahkan tanpa mengganggu kiosk
-lama yang sudah jalan.
+Membatasi kiosk agar hanya bisa dipakai absen di lokasi fisik tertentu.
+**Fail-closed**: device yang BELUM diatur lokasinya (`lokasi_lat`/`lng` NULL)
+dianggap TIDAK valid — admin wajib mengatur titik acuan dulu (bagian di
+bawah) sebelum device itu bisa dipakai absen. Konsekuensinya: device
+manapun yang belum pernah diatur lokasinya (termasuk device lama yang
+sudah jalan sebelum fitur ini ada) akan berhenti menerima absensi begitu
+kiosk-nya melakukan sync berikutnya, sampai admin mengatur lokasinya.
 
 **Admin mengatur titik acuan** (dashboard web, klik pin di peta):
 

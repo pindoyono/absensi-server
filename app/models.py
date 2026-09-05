@@ -82,9 +82,9 @@ class Device(Base):
     health_dilaporkan_pada = Column(DateTime, nullable=True)
 
     # Geofencing per device — diatur admin lewat peta di dashboard (PUT
-    # /device/{id}/lokasi). NULL (belum diatur) = fitur nonaktif untuk
-    # device ini, kiosk tidak pernah diblokir oleh lokasi (backward-compat
-    # untuk device lama yang belum di-setup).
+    # /device/{id}/lokasi). Fail-closed: NULL (belum diatur) berarti device
+    # BELUM BOLEH dipakai absen sampai admin mengatur titik acuannya —
+    # lihat POST /device/{id}/lokasi/cek.
     lokasi_lat = Column(Float, nullable=True)
     lokasi_lng = Column(Float, nullable=True)
     radius_meter = Column(Integer, nullable=True)

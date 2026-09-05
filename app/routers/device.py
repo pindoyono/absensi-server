@@ -205,13 +205,16 @@ def cek_lokasi_device(
     ini — server hanya menyimpan hasilnya untuk ditampilkan di dashboard
     (kolom `lokasi_valid_terakhir` dkk pada DeviceOut).
 
-    Device TANPA lokasi diatur (lokasi_lat/lng NULL) selalu valid — fitur
-    ini opt-in per device, tidak memengaruhi device yang belum di-setup.
+    Fail-closed: device TANPA lokasi diatur (lokasi_lat/lng NULL) dianggap
+    TIDAK valid — admin wajib mengatur titik acuan dulu (PUT
+    /device/{id}/lokasi) sebelum device itu bisa dipakai absen. Ini
+    sengaja bukan opt-in lagi: kalau NULL dianggap valid, device baru yang
+    belum sempat di-setup lokasinya diam-diam tidak pernah diproteksi.
     """
     device = verify_device(db, device_id, x_device_api_key)
 
     if device.lokasi_lat is None or device.lokasi_lng is None or device.radius_meter is None:
-        hasil = LokasiCekOut(valid=True, alasan="lokasi belum diatur untuk device ini")
+        hasil = LokasiCekOut(valid=False, alasan="lokasi belum diatur untuk device ini — hubungi admin")
     elif not body.tersedia:
         hasil = LokasiCekOut(valid=False, alasan="lokasi tidak tersedia (izin ditolak / GPS mati)")
     elif body.mock:
