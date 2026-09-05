@@ -207,6 +207,25 @@ export default function DevicePage() {
         }
     };
 
+    const handleHardDelete = async (device_id: string) => {
+        if (!token) return;
+        if (!window.confirm(`HAPUS PERMANEN device "${device_id}"? Data history device ini akan hilang.`)) return;
+        setBusyId(device_id);
+        try {
+            const res = await fetch(`${API_BASE}/device/${device_id}/hard`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(body?.detail ?? `HTTP ${res.status}`);
+            await loadDevices(token);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Gagal menghapus device");
+        } finally {
+            setBusyId(null);
+        }
+    };
+
     const copyKey = async (key: string) => {
         try {
             await navigator.clipboard.writeText(key);
@@ -366,6 +385,14 @@ export default function DevicePage() {
                                                     Nonaktifkan
                                                 </Button>
                                             )}
+                                            <Button
+                                                variant="danger"
+                                                className="text-xs px-2 py-1 bg-rose-700 hover:bg-rose-800"
+                                                disabled={busyId === d.device_id}
+                                                onClick={() => handleHardDelete(d.device_id)}
+                                            >
+                                                Hapus
+                                            </Button>
                                         </td>
                                     </tr>
                                 ))}

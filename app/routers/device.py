@@ -137,6 +137,19 @@ def deactivate_device(
     db.commit()
     return {"status": "dinonaktifkan"}
 
+@router.delete("/{device_id}/hard")
+def hard_delete_device(
+    device_id: str,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin")),
+):
+    device = db.query(Device).filter(Device.device_id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device tidak ditemukan")
+    db.delete(device)
+    db.commit()
+    return {"status": "dihapus permanen"}
+
 
 # Ambang batas basi — HARUS sama dengan BATAS_STALE_JADWAL_JAM /
 # BATAS_STALE_DISPENSASI_JAM di config client kiosk, supaya dashboard dan
