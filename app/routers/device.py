@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models import Device, Guru
 from app.auth import require_role, get_current_guru
 from app.services.device_auth import verify_device, hash_api_key, verify_api_key
+from app.services.geo import jarak_meter
 
 router = APIRouter(prefix="/device", tags=["device"])
 
@@ -32,6 +33,13 @@ class DeviceOut(BaseModel):
     jadwal_jam_lalu: float | None = None
     dispensasi_jam_lalu: float | None = None
     health_dilaporkan_pada: datetime | None = None
+    # Geofencing (lihat LokasiIn / endpoint /lokasi di bawah)
+    lokasi_lat: float | None = None
+    lokasi_lng: float | None = None
+    radius_meter: int | None = None
+    lokasi_valid_terakhir: bool | None = None
+    lokasi_alasan_terakhir: str | None = None
+    lokasi_dicek_pada: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -39,6 +47,37 @@ class DeviceOut(BaseModel):
 class DeviceHealthIn(BaseModel):
     jadwal_jam_lalu: float | None = None
     dispensasi_jam_lalu: float | None = None
+
+
+class LokasiIn(BaseModel):
+    """Titik acuan geofencing untuk satu device — diisi admin lewat peta di dashboard."""
+    lat: float
+    lng: float
+    radius_meter: int
+
+
+class LokasiCekIn(BaseModel):
+    """
+    Dikirim kiosk secara berkala (bukan per-scan absensi — device tidak
+    berpindah antar scan, dan minta fix GPS tiap scan terlalu lambat).
+
+    `tersedia=False` berarti kiosk tidak bisa dapat lokasi sama sekali
+    (izin ditolak / GPS mati / timeout) — lat/lng/mock diabaikan.
+    `mock=True` berarti OS Android mendeteksi lokasi ini dari mock
+    provider (`LocationCompat.isMock`) — lihat catatan keamanan di
+    docs/API_CONTRACT.md bagian geofencing soal batas deteksi ini.
+    """
+    tersedia: bool
+    lat: float | None = None
+    lng: float | None = None
+    akurasi_meter: float | None = None
+    mock: bool = False
+
+
+class LokasiCekOut(BaseModel):
+    valid: bool
+    alasan: str
+    jarak_meter: float | None = None
 
 
 
@@ -122,6 +161,79 @@ def regenerate_key(
     device.raw_api_key = raw_key
     db.commit()
     return {"device_id": device_id, "api_key": raw_key}
+
+
+@router.put("/{device_id}/lokasi", response_model=DeviceOut)
+def atur_lokasi_device(
+    device_id: str,
+    body: LokasiIn,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin")),
+):
+    """
+    Set/ubah titik acuan geofencing (pin di peta dashboard) + radius toleransi.
+    Reset status cek terakhir — supaya dashboard tidak menampilkan status lama
+    yang diukur terhadap titik lokasi yang sudah tidak berlaku.
+    """
+    if body.radius_meter <= 0:
+        raise HTTPException(status_code=422, detail="radius_meter harus lebih dari 0")
+    device = db.query(Device).filter(Device.device_id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device tidak ditemukan")
+
+    device.lokasi_lat = body.lat
+    device.lokasi_lng = body.lng
+    device.radius_meter = body.radius_meter
+    device.lokasi_valid_terakhir = None
+    device.lokasi_alasan_terakhir = None
+    device.lokasi_dicek_pada = None
+    db.commit()
+    db.refresh(device)
+    return device
+
+
+@router.post("/{device_id}/lokasi/cek", response_model=LokasiCekOut)
+def cek_lokasi_device(
+    device_id: str,
+    body: LokasiCekIn,
+    db: Session = Depends(get_db),
+    x_device_api_key: str | None = Header(default=None, alias="X-Device-Api-Key"),
+):
+    """
+    Dipanggil kiosk secara berkala (lihat docstring LokasiCekIn). Kiosk-lah
+    yang memutuskan blokir dirinya sendiri berdasarkan `valid` di response
+    ini — server hanya menyimpan hasilnya untuk ditampilkan di dashboard
+    (kolom `lokasi_valid_terakhir` dkk pada DeviceOut).
+
+    Device TANPA lokasi diatur (lokasi_lat/lng NULL) selalu valid — fitur
+    ini opt-in per device, tidak memengaruhi device yang belum di-setup.
+    """
+    device = verify_device(db, device_id, x_device_api_key)
+
+    if device.lokasi_lat is None or device.lokasi_lng is None or device.radius_meter is None:
+        hasil = LokasiCekOut(valid=True, alasan="lokasi belum diatur untuk device ini")
+    elif not body.tersedia:
+        hasil = LokasiCekOut(valid=False, alasan="lokasi tidak tersedia (izin ditolak / GPS mati)")
+    elif body.mock:
+        hasil = LokasiCekOut(valid=False, alasan="GPS palsu (mock location) terdeteksi")
+    elif body.lat is None or body.lng is None:
+        hasil = LokasiCekOut(valid=False, alasan="koordinat tidak dikirim")
+    else:
+        jarak = jarak_meter(device.lokasi_lat, device.lokasi_lng, body.lat, body.lng)
+        if jarak <= device.radius_meter:
+            hasil = LokasiCekOut(valid=True, alasan="dalam radius", jarak_meter=round(jarak, 1))
+        else:
+            hasil = LokasiCekOut(
+                valid=False,
+                alasan=f"di luar radius ({round(jarak)}m dari titik, batas {device.radius_meter}m)",
+                jarak_meter=round(jarak, 1),
+            )
+
+    device.lokasi_valid_terakhir = hasil.valid
+    device.lokasi_alasan_terakhir = hasil.alasan
+    device.lokasi_dicek_pada = datetime.utcnow()
+    db.commit()
+    return hasil
 
 
 @router.delete("/{device_id}")

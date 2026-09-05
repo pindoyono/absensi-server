@@ -81,6 +81,20 @@ class Device(Base):
     dispensasi_jam_lalu = Column(Float, nullable=True)
     health_dilaporkan_pada = Column(DateTime, nullable=True)
 
+    # Geofencing per device — diatur admin lewat peta di dashboard (PUT
+    # /device/{id}/lokasi). NULL (belum diatur) = fitur nonaktif untuk
+    # device ini, kiosk tidak pernah diblokir oleh lokasi (backward-compat
+    # untuk device lama yang belum di-setup).
+    lokasi_lat = Column(Float, nullable=True)
+    lokasi_lng = Column(Float, nullable=True)
+    radius_meter = Column(Integer, nullable=True)
+    # Hasil pengecekan TERAKHIR yang dilaporkan kiosk (POST /device/{id}/lokasi/cek)
+    # — bukan sumber kebenaran keamanan (kiosk yang memutuskan blokir sendiri
+    # dari response), murni untuk ditampilkan di dashboard admin.
+    lokasi_valid_terakhir = Column(Boolean, nullable=True)
+    lokasi_alasan_terakhir = Column(String(200), nullable=True)
+    lokasi_dicek_pada = Column(DateTime, nullable=True)
+
 
 class JadwalStandar(Base):
     __tablename__ = "jadwal_standar"
