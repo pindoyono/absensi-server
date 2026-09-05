@@ -13,7 +13,7 @@ client Android (superset field), supaya integrasi client tidak menggagalkan
 seluruh siklus sync.
 """
 import uuid
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -32,6 +32,23 @@ DEV = {"X-Device-Id": "kiosk01", "X-Device-Api-Key": RAW_KEY}
 
 def _hari_ini() -> str:
     return ["SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU", "MINGGU"][date.today().weekday()]
+
+
+def _tanggal_hari_sekolah() -> date:
+    """Tanggal nyata yang jatuh di hari sekolah (SENIN-JUMAT).
+
+    `_ambil_jadwal_efektif()` (app/routers/absensi.py) memetakan weekday() dari
+    TANGGAL RECORD itu sendiri ke nama hari, dan langsung return None (tidak
+    ada jadwal) untuk Sabtu/Minggu -- beda dengan fixture db_session di sini
+    yang cuma men-seed JadwalStandar berlabel "SENIN" saat hari ini akhir
+    pekan. Tanpa penyesuaian ini, tes yang menguji validasi jendela waktu jadi
+    flaky tergantung hari dijalankannya: kalau hari ini kebetulan Sabtu/Minggu,
+    validasi kebijakan dilewati sama sekali dan absen tersimpan begitu saja.
+    """
+    hari_ini = date.today()
+    if hari_ini.weekday() >= 5:  # 5=SABTU, 6=MINGGU
+        return hari_ini + timedelta(days=7 - hari_ini.weekday())  # SENIN berikutnya
+    return hari_ini
 
 
 @pytest.fixture()
@@ -100,9 +117,11 @@ def test_sync_menerima_kategori_dispensasi_tanpa_422(client, db_session):
 
 
 def test_sync_pulang_cepat_tanpa_dispensasi_ditolak_bukan_422(client):
+    tanggal = _tanggal_hari_sekolah()
     batch = {"records": [_rec(
+        tanggal=tanggal.isoformat(),
         type="PULANG", status_kehadiran_otomatis="IZIN",
-        jam_aktual=datetime.combine(date.today(), time(9, 0)).isoformat(),
+        jam_aktual=datetime.combine(tanggal, time(9, 0)).isoformat(),
     )]}
     r = client.post("/absensi/sync", json=batch, headers=DEV)
     assert r.status_code == 200, r.text
