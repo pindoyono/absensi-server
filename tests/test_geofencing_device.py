@@ -82,6 +82,29 @@ def test_admin_set_lokasi(client, db_session):
     assert body["radius_meter"] == 100
 
 
+def test_device_tarik_konfigurasi_lokasi_sendiri(client, db_session):
+    _atur_lokasi(client, radius=150)
+    r = client.get("/device/kiosk-geo/lokasi", headers=DEVICE_HEADERS)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["lokasi_lat"] == TITIK_LAT
+    assert body["lokasi_lng"] == TITIK_LNG
+    assert body["radius_meter"] == 150
+
+
+def test_device_tarik_konfigurasi_belum_diatur_null(client, db_session):
+    r = client.get("/device/kiosk-geo/lokasi", headers=DEVICE_HEADERS)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["lokasi_lat"] is None
+    assert body["radius_meter"] is None
+
+
+def test_device_tarik_konfigurasi_tanpa_api_key_ditolak(client, db_session):
+    r = client.get("/device/kiosk-geo/lokasi")
+    assert r.status_code == 401
+
+
 def test_set_lokasi_radius_nol_ditolak(client, db_session):
     r = client.put("/device/kiosk-geo/lokasi", headers=_admin_headers(),
                    json={"lat": TITIK_LAT, "lng": TITIK_LNG, "radius_meter": 0})

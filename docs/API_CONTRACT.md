@@ -117,6 +117,21 @@ Authorization: Bearer <JWT admin>
 { "lat": -3.4295, "lng": 116.4396, "radius_meter": 100 }
 ```
 
+**Device menarik konfigurasi lokasinya sendiri** (device-auth, bukan admin)
+untuk di-cache lokal — dipakai validasi jarak (Haversine) mandiri di client
+saat offline, tanpa perlu round-trip ke `POST /lokasi/cek`:
+
+```
+GET /device/{device_id}/lokasi
+X-Device-Api-Key: <api_key device>
+
+→ { "lokasi_lat": -3.4295, "lokasi_lng": 116.4396, "radius_meter": 100 }
+```
+
+Semua field `null` kalau belum diatur admin. Client Android menarik ini
+tiap siklus sync (best-effort, sama seperti `POST /lokasi/cek`) dan
+meng-cache hasilnya — lihat `GeoOffline.kt` di client-android.
+
 **Kiosk melapor secara berkala** (bukan per-scan absensi — device tidak
 berpindah antar scan wajah, dan minta fix GPS tiap scan terlalu lambat untuk
 alur pengenalan wajah). Client Android memanggil ini lewat siklus sync
@@ -140,6 +155,16 @@ terlepas dari koordinat yang dikirim.
 ini — server hanya mencatat hasilnya (kolom `lokasi_valid_terakhir` dkk pada
 `GET /device`, ditampilkan di dashboard) untuk visibilitas admin, bukan untuk
 memaksa apa pun dari sisi server terhadap `POST /absensi/sync` itu sendiri.
+
+**Fallback offline:** kalau `POST /lokasi/cek` gagal dihubungi (device
+offline), client TIDAK cuma diam memakai status lama selamanya — dia
+menghitung sendiri jarak ke titik acuan yang sudah di-cache (dari
+`GET /lokasi` di atas) pakai Haversine lokal, dan itulah yang dipakai
+memutuskan blokir/tidak sampai online lagi. Hasil offline ini ditandai
+`"[offline]"` di teks alasan yang tersimpan lokal (tidak dikirim ke
+server — server tidak pernah tahu kiosk sempat menghitung sendiri).
+Kalau genuinely belum PERNAH online sama sekali (belum ada konfigurasi
+ter-cache), fail-closed default tetap berlaku.
 
 **Batas deteksi GPS palsu — penting untuk dipahami:** flag `mock` bergantung
 pada `LocationCompat.isMock()` Android, yang andal mendeteksi pemakaian

@@ -87,6 +87,15 @@ class LokasiCekOut(BaseModel):
     dikonfigurasi: bool = False
 
 
+class LokasiKonfigOut(BaseModel):
+    """Titik acuan geofencing device ini, apa adanya — dipakai client
+    men-cache konfigurasi lokal supaya bisa validasi jarak sendiri (Haversine)
+    saat offline, tanpa perlu round-trip ke POST /lokasi/cek. Endpoint ini
+    device-auth (bukan admin) justru karena device-lah yang membutuhkannya."""
+    lokasi_lat: float | None = None
+    lokasi_lng: float | None = None
+    radius_meter: int | None = None
+
 
 @router.get("", response_model=list[DeviceOut])
 def list_device(db: Session = Depends(get_db), guru: Guru = Depends(require_role("admin", "guru_piket"))):
@@ -168,6 +177,28 @@ def regenerate_key(
     device.raw_api_key = raw_key
     db.commit()
     return {"device_id": device_id, "api_key": raw_key}
+
+
+@router.get("/{device_id}/lokasi", response_model=LokasiKonfigOut)
+def get_lokasi_konfig_device(
+    device_id: str,
+    db: Session = Depends(get_db),
+    x_device_api_key: str | None = Header(default=None, alias="X-Device-Api-Key"),
+):
+    """
+    Device menarik konfigurasi lokasinya SENDIRI (titik acuan + radius apa
+    adanya, bukan hasil cek) supaya bisa di-cache lokal dan dipakai validasi
+    jarak (Haversine) sendiri saat offline — lihat client-android
+    GeoOffline.kt. Device-auth, bukan admin: yang butuh data ini justru
+    device itu sendiri, bukan dashboard (dashboard sudah punya lewat
+    GET /device biasa).
+    """
+    device = verify_device(db, device_id, x_device_api_key)
+    return LokasiKonfigOut(
+        lokasi_lat=device.lokasi_lat,
+        lokasi_lng=device.lokasi_lng,
+        radius_meter=device.radius_meter,
+    )
 
 
 @router.put("/{device_id}/lokasi", response_model=DeviceOut)
