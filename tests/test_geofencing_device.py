@@ -106,6 +106,7 @@ def test_cek_lokasi_device_belum_diatur_ditolak(client, db_session):
     body = r.json()
     assert body["valid"] is False
     assert "belum diatur" in body["alasan"]
+    assert body["dikonfigurasi"] is False
 
 
 # ─── Cek lokasi — device DENGAN lokasi diatur ─────────────────
@@ -118,6 +119,19 @@ def test_cek_lokasi_dalam_radius_valid(client, db_session):
     body = r.json()
     assert body["valid"] is True
     assert body["jarak_meter"] < 1
+    assert body["dikonfigurasi"] is True
+
+
+def test_cek_lokasi_dikonfigurasi_true_walau_di_luar_radius(client, db_session):
+    """dikonfigurasi menandai admin sudah pasang titik acuan -- lepas dari
+    hasil valid/invalid saat ini (beda dengan alasan yang berbunyi rejeksi)."""
+    _atur_lokasi(client, radius=50)
+    r = client.post("/device/kiosk-geo/lokasi/cek", headers=DEVICE_HEADERS,
+                    json={"tersedia": True, "lat": TITIK_LAT + 0.01, "lng": TITIK_LNG})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["valid"] is False
+    assert body["dikonfigurasi"] is True
 
 
 def test_cek_lokasi_luar_radius_invalid(client, db_session):

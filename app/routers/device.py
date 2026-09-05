@@ -78,6 +78,13 @@ class LokasiCekOut(BaseModel):
     valid: bool
     alasan: str
     jarak_meter: float | None = None
+    # Beda dengan `valid`: ini murni "apakah admin sudah pasang titik acuan
+    # untuk device ini", lepas dari hasil cek jarak/mock/dsb. Dipakai client
+    # untuk indikator ikon "lokasi sudah diatur atau belum" — string-matching
+    # ke `alasan` terlalu rapuh untuk keperluan itu. Diisi di akhir
+    # cek_lokasi_device(), default False di sini cuma supaya tiap cabang
+    # if/elif di bawah tidak perlu menyebutkannya berulang.
+    dikonfigurasi: bool = False
 
 
 
@@ -212,8 +219,9 @@ def cek_lokasi_device(
     belum sempat di-setup lokasinya diam-diam tidak pernah diproteksi.
     """
     device = verify_device(db, device_id, x_device_api_key)
+    dikonfigurasi = device.lokasi_lat is not None and device.lokasi_lng is not None and device.radius_meter is not None
 
-    if device.lokasi_lat is None or device.lokasi_lng is None or device.radius_meter is None:
+    if not dikonfigurasi:
         hasil = LokasiCekOut(valid=False, alasan="lokasi belum diatur untuk device ini — hubungi admin")
     elif not body.tersedia:
         hasil = LokasiCekOut(valid=False, alasan="lokasi tidak tersedia (izin ditolak / GPS mati)")
@@ -232,6 +240,7 @@ def cek_lokasi_device(
                 jarak_meter=round(jarak, 1),
             )
 
+    hasil.dikonfigurasi = dikonfigurasi
     device.lokasi_valid_terakhir = hasil.valid
     device.lokasi_alasan_terakhir = hasil.alasan
     device.lokasi_dicek_pada = datetime.utcnow()

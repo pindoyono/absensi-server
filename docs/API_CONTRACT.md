@@ -127,8 +127,10 @@ POST /device/{device_id}/lokasi/cek
 X-Device-Api-Key: <api_key device>
 { "tersedia": true, "lat": -3.4294, "lng": 116.4397, "akurasi_meter": 8.2, "mock": false }
 
-→ { "valid": true, "alasan": "dalam radius", "jarak_meter": 12.4 }
+→ { "valid": true, "alasan": "dalam radius", "jarak_meter": 12.4, "dikonfigurasi": true }
 ```
+
+`dikonfigurasi` beda dengan `valid`: murni menandai "admin sudah pasang titik acuan untuk device ini", lepas dari hasil cek jarak/mock/dsb saat ini. `false` hanya untuk kasus lokasi belum diatur sama sekali. Dipakai client untuk indikator ikon "lokasi sudah diatur atau belum" tanpa perlu string-matching ke `alasan`.
 
 `tersedia: false` (izin lokasi ditolak / GPS mati) dan `mock: true` (OS
 mendeteksi mock-location provider) SELALU menghasilkan `valid: false`,
