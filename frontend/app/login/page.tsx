@@ -22,7 +22,9 @@ export default function LoginPage() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.detail || "Login Google gagal");
             localStorage.setItem("token", data.access_token);
-            router.push("/");
+            // Siswa (akses terbatas) diarahkan ke halaman riwayat sendiri,
+            // bukan dashboard admin — dashboard/nav penuh cuma untuk guru/admin.
+            router.push(data.role === "siswa" ? "/saya" : "/");
         } catch (err: any) {
             setError(err.message);
         } finally {

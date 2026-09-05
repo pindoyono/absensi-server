@@ -151,6 +151,37 @@ berjalan di sisi client, di luar kendali server). Anggap ini pertahanan
 lapis-pertama terhadap penyalahgunaan biasa, bukan bukti kriptografis
 terhadap penyerang yang punya akses root ke device kiosk itu sendiri.
 
+### 1.5 Login siswa (opsional, dashboard web, role tetap "siswa")
+
+Siswa TIDAK login lewat NIS+password di dashboard web (itu jalur client
+Android/offline, terpisah — lihat client-android). Kalau admin mengisi
+`email` siswa lewat `POST`/`PUT /siswa`, siswa itu bisa login Google SSO
+di dashboard web dengan `POST /auth/login/google` yang sama seperti guru:
+
+```
+POST /auth/login/google
+{ "google_id_token": "<id_token dari Google Sign-In>" }
+```
+
+Server cek `Guru.email` dulu (perilaku lama, tidak berubah); kalau tidak
+ketemu, baru cek `Siswa.email`. Response `role` jadi `"siswa"`:
+
+```
+→ { "access_token": "...", "email": "budi@sekolah.sch.id", "nama": "Budi", "role": "siswa" }
+```
+
+**Akses siswa sangat terbatas** — hanya dua endpoint self-service:
+- `GET /siswa/saya` — profil sendiri
+- `GET /siswa/saya/absensi` — riwayat absensi sendiri (siswa_id diambil dari
+  token, BUKAN dari query param — siswa tidak bisa lihat data siswa lain)
+
+Token siswa ditolak (401) di semua endpoint guru-only (`require_role`,
+`get_current_guru`) walau `sub` (id numerik)-nya kebetulan sama dengan id
+baris guru lain — dibedakan lewat klaim `"tipe"` di JWT (`"guru"` vs
+`"siswa"`), bukan cuma `"role"`. Lihat `app/auth.py` kalau menambah
+endpoint self-service siswa baru — pakai `get_current_siswa`, jangan
+`get_current_guru`.
+
 ---
 
 ## 2. Alur Enrollment Wajah

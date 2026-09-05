@@ -30,6 +30,10 @@ class Siswa(Base):
     nis = Column(String(20), unique=True, nullable=False)
     nama = Column(String(100), nullable=False)
     kelas = Column(String(20), nullable=False)
+    # Opsional — kalau diisi, siswa bisa login Google di dashboard web dengan
+    # role tetap "siswa" (akses terbatas, lihat get_current_siswa di app/auth.py).
+    # NIS/absensi tidak terpengaruh sama sekali — ini murni jalur login tambahan.
+    email = Column(String(150), unique=True, nullable=True)
     # Normalisasi: jurusan string lama dipertahankan utk backward-compat,
     # konsentrasi_id adalah FK ke tabel konsentrasi_keahlian (sumber kebenaran baru).
     jurusan = Column(String(150), default="Teknik Elektronika")

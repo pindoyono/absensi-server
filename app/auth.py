@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import Guru, Device
+from app.models import Guru, Device, Siswa
 
 bearer_scheme = HTTPBearer()
 
@@ -53,27 +53,71 @@ def issue_internal_jwt(guru: Guru) -> str:
         "sub": str(guru.id),
         "email": guru.email,
         "role": guru.role,
+        # "tipe" (bukan "role") yang membedakan token guru vs siswa di
+        # get_current_guru/get_current_siswa -- guru.id dan siswa.id sama-sama
+        # auto-increment dari 1, jadi TANPA field ini token siswa dengan
+        # sub="3" bisa salah tertukar dibaca sebagai guru id=3 kalau baris itu
+        # kebetulan ada (lihat get_current_siswa di bawah).
+        "tipe": "guru",
         "exp": datetime.utcnow() + timedelta(minutes=settings.jwt_expire_minutes),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def issue_siswa_jwt(siswa: Siswa) -> str:
+    """Terbitkan JWT internal untuk siswa yang login Google (role tetap
+    'siswa', akses dibatasi lewat get_current_siswa — lihat komentar
+    `tipe` di issue_internal_jwt soal kenapa field ini wajib ada)."""
+    payload = {
+        "sub": str(siswa.id),
+        "email": siswa.email,
+        "role": "siswa",
+        "tipe": "siswa",
+        "exp": datetime.utcnow() + timedelta(minutes=settings.jwt_expire_minutes),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def decode_token(token: str) -> dict:
+    try:
+        return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Sesi tidak valid atau kedaluwarsa")
 
 
 def get_current_guru(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> Guru:
-    """Dependency: dekode JWT internal, kembalikan record guru yang login."""
-    token = credentials.credentials
-    try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Sesi tidak valid atau kedaluwarsa")
+    """Dependency: dekode JWT internal, kembalikan record guru yang login.
+    Menolak token siswa (tipe != "guru") walau `sub`-nya kebetulan valid
+    sebagai id baris guru lain -- lihat catatan di issue_internal_jwt."""
+    payload = decode_token(credentials.credentials)
+    if payload.get("tipe") != "guru":
+        raise HTTPException(status_code=401, detail="Token ini bukan sesi guru/admin")
 
     guru = db.query(Guru).filter(Guru.id == int(payload["sub"]), Guru.aktif == True).first()
     if not guru:
         raise HTTPException(status_code=401, detail="Akun guru tidak ditemukan atau nonaktif")
 
     return guru
+
+
+def get_current_siswa(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> Siswa:
+    """Dependency setara get_current_guru, tapi untuk siswa yang login
+    Google (role tetap 'siswa', akses ke endpoint self-service saja)."""
+    payload = decode_token(credentials.credentials)
+    if payload.get("tipe") != "siswa":
+        raise HTTPException(status_code=401, detail="Token ini bukan sesi siswa")
+
+    siswa = db.query(Siswa).filter(Siswa.id == int(payload["sub"]), Siswa.aktif == True).first()
+    if not siswa:
+        raise HTTPException(status_code=401, detail="Akun siswa tidak ditemukan atau nonaktif")
+
+    return siswa
 
 
 def require_role(*allowed_roles: str):
@@ -119,13 +163,13 @@ def get_guru_or_device(
             device.last_seen_at = datetime.utcnow()
             return device
     
-    # Fallback ke JWT guru (untuk dashboard web)
+    # Fallback ke JWT guru (untuk dashboard web) -- token siswa ditolak
+    # sengaja (get_guru_or_device dipakai endpoint device-facing, bukan area
+    # siswa), lihat catatan "tipe" di issue_internal_jwt.
     if authorization and authorization.startswith("Bearer "):
-        token = authorization[7:]
-        try:
-            payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-        except JWTError:
-            raise HTTPException(status_code=401, detail="Sesi tidak valid atau kedaluwarsa")
+        payload = decode_token(authorization[7:])
+        if payload.get("tipe") != "guru":
+            raise HTTPException(status_code=401, detail="Token ini bukan sesi guru/admin")
 
         guru = db.query(Guru).filter(Guru.id == int(payload["sub"]), Guru.aktif == True).first()
         if not guru:

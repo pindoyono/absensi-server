@@ -14,6 +14,7 @@ interface Siswa {
     konsentrasi_id: number | null;
     enrolled: boolean;
     tanggal_enrollment: string | null;
+    email: string | null;
 }
 
 interface KonsentrasiOption {
@@ -31,6 +32,7 @@ const emptyForm = {
     jurusan: "Teknik Elektronika",
     konsentrasi_id: null as number | null,
     konsentrasi_search: "",
+    email: "",
 };
 
 export default function SiswaPage() {
@@ -118,6 +120,7 @@ export default function SiswaPage() {
             jurusan: siswa.jurusan,
             konsentrasi_id: siswa.konsentrasi_id,
             konsentrasi_search: kon ? `${kon.kode} - ${kon.nama}` : siswa.jurusan,
+            email: siswa.email ?? "",
         });
         setFormError(null);
         setModalOpen(true);
@@ -138,6 +141,7 @@ export default function SiswaPage() {
                 kelas: form.kelas.trim(),
                 jurusan: form.jurusan,
                 konsentrasi_id: form.konsentrasi_id,
+                email: form.email.trim() || null,
             };
             const url = editingId
                 ? `${API_BASE}/siswa/${editingId}`
@@ -310,6 +314,7 @@ export default function SiswaPage() {
                             <th className="py-3 px-4 text-left">Nama</th>
                             <th className="py-3 px-4 text-left">Kelas</th>
                             <th className="py-3 px-4 text-left">Jurusan</th>
+                            <th className="py-3 px-4 text-left">Email (login)</th>
                             <th className="py-3 px-4 text-left">Status</th>
                             <th className="py-3 px-4 text-center">Aksi</th>
                         </tr>
@@ -317,7 +322,7 @@ export default function SiswaPage() {
                     <tbody>
                         {siswaList.length === 0 ? (
                             <tr>
-                                <td colSpan={6} className="py-8 text-center text-slate-500">
+                                <td colSpan={7} className="py-8 text-center text-slate-500">
                                     <p className="font-medium">Belum ada data siswa</p>
                                     <p className="text-xs mt-1">Klik "+ Tambah Siswa" untuk menambah data baru</p>
                                 </td>
@@ -329,6 +334,9 @@ export default function SiswaPage() {
                                     <td className="py-3 px-4 font-medium text-slate-800">{siswa.nama}</td>
                                     <td className="py-3 px-4 text-slate-600">{siswa.kelas}</td>
                                     <td className="py-3 px-4 text-slate-600">{siswa.jurusan}</td>
+                                    <td className="py-3 px-4 text-slate-600">
+                                        {siswa.email ?? <span className="text-slate-400">— belum diisi</span>}
+                                    </td>
                                     <td className="py-3 px-4">
                                         <Badge variant={siswa.enrolled ? "success" : "warning"}>
                                             {siswa.enrolled ? "Teraplikasi" : "Belum Enrolled"}
@@ -446,6 +454,22 @@ export default function SiswaPage() {
                                         Data konsentrasi kosong. Tambahkan di menu "Manajemen Spektrum Keahlian" terlebih dahulu.
                                     </p>
                                 )}
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Email <span className="text-slate-400 font-normal">(opsional)</span>
+                                </label>
+                                <input
+                                    type="email"
+                                    value={form.email}
+                                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                                    className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                    placeholder="siswa@sekolah.sch.id"
+                                />
+                                <p className="text-xs text-slate-400 mt-1">
+                                    Kalau diisi, siswa bisa login Google pakai email ini di dashboard (akses terbatas, lihat riwayat absensi sendiri saja).
+                                </p>
                             </div>
                         </div>
 

@@ -5,12 +5,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Siswa, FaceEmbedding, Guru, Device, KonsentrasiKeahlian
-from app.auth import require_role, get_current_guru, get_guru_or_device
+from app.models import Siswa, FaceEmbedding, Guru, Device, KonsentrasiKeahlian, Absensi
+from app.auth import require_role, get_current_guru, get_guru_or_device, get_current_siswa
 from app.services.crypto import encrypt_embedding
 
 router = APIRouter(prefix="/siswa", tags=["siswa"])
@@ -24,6 +24,9 @@ class SiswaIn(BaseModel):
     kelas: str
     jurusan: str = "Teknik Elektronika"
     konsentrasi_id: Optional[int] = None
+    # Opsional — kalau diisi, siswa ini bisa login Google di dashboard web
+    # (role tetap "siswa", akses terbatas). Lihat POST /auth/login/google.
+    email: Optional[EmailStr] = None
 
 
 class SiswaOut(BaseModel):
@@ -35,6 +38,7 @@ class SiswaOut(BaseModel):
     konsentrasi_id: Optional[int] = None
     enrolled: bool
     tanggal_enrollment: Optional[date] = None
+    email: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -87,6 +91,8 @@ def create_siswa(
 ):
     if db.query(Siswa).filter(Siswa.nis == body.nis).first():
         raise HTTPException(status_code=409, detail=f"NIS {body.nis} sudah terdaftar")
+    if body.email and db.query(Siswa).filter(Siswa.email == body.email).first():
+        raise HTTPException(status_code=409, detail=f"Email {body.email} sudah dipakai siswa lain")
     row = Siswa(**body.model_dump())
     db.add(row)
     db.commit()
@@ -104,6 +110,9 @@ def update_siswa(
     row = db.query(Siswa).filter(Siswa.id == siswa_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Siswa tidak ditemukan")
+    if body.email and body.email != row.email:
+        if db.query(Siswa).filter(Siswa.email == body.email).first():
+            raise HTTPException(status_code=409, detail=f"Email {body.email} sudah dipakai siswa lain")
     for k, v in body.model_dump().items():
         setattr(row, k, v)
     db.commit()
@@ -324,3 +333,57 @@ def enrollment_progress(
         "persentase": round((sudah / total * 100), 1) if total else 0,
         "belum_enroll_per_kelas": {k: v for k, v in belum_per_kelas},
     }
+
+
+# ---------- Self-service siswa (login Google, role tetap "siswa") ----------
+# Ditaruh terakhir & pakai prefix path "/saya" yang tidak mungkin bentrok
+# dengan {siswa_id} (integer) di endpoint admin di atas.
+
+@router.get("/saya", response_model=SiswaOut)
+def profil_saya(siswa: Siswa = Depends(get_current_siswa)):
+    """Profil siswa yang sedang login sendiri."""
+    return siswa
+
+
+class AbsensiSayaOut(BaseModel):
+    record_id: str
+    tanggal: date
+    type: str
+    jam_aktual: datetime
+    status_kehadiran_otomatis: str
+    status_kehadiran_final: Optional[str] = None
+    catatan: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/saya/absensi", response_model=list[AbsensiSayaOut])
+def absensi_saya(
+    limit: int = 30,
+    siswa: Siswa = Depends(get_current_siswa),
+    db: Session = Depends(get_db),
+):
+    """Riwayat absensi milik siswa yang login sendiri — TIDAK bisa lihat
+    data siswa lain (siswa_id diambil dari token, bukan dari query param)."""
+    rows = (
+        db.query(Absensi)
+        .filter(Absensi.siswa_id == siswa.id)
+        .order_by(Absensi.tanggal.desc(), Absensi.jam_aktual.desc())
+        .limit(min(limit, 100))
+        .all()
+    )
+    # record_id kolom UUID — dikonversi manual ke str, bukan mengandalkan
+    # from_attributes (pydantic v2 tidak otomatis meng-cast UUID -> str).
+    return [
+        AbsensiSayaOut(
+            record_id=str(r.record_id),
+            tanggal=r.tanggal,
+            type=r.type,
+            jam_aktual=r.jam_aktual,
+            status_kehadiran_otomatis=r.status_kehadiran_otomatis,
+            status_kehadiran_final=r.status_kehadiran_final,
+            catatan=r.catatan,
+        )
+        for r in rows
+    ]

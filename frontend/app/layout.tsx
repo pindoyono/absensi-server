@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import UserMenu from "./components/UserMenu";
+import Nav from "./components/Nav";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -32,69 +33,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
               </div>
 
-              {/* Navigation Links */}
-              <nav className="hidden md:flex items-center space-x-1">
-                <a
-                  href="/"
-                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
-                >
-                  Dashboard
-                </a>
-                <a
-                  href="/guru"
-                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
-                >
-                  Guru
-                </a>
-                <a
-                  href="/siswa"
-                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
-                >
-                  Siswa
-                </a>
-                <a
-                  href="/jadwal"
-                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
-                >
-                  Jadwal
-                </a>
-                <a
-                  href="/dispensasi"
-                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
-                >
-                  Dispensasi
-                </a>
-                <a
-                  href="/absensi"
-                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
-                >
-                  Absensi
-                </a>
-                <a
-                  href="/laporan"
-                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
-                >
-                  Laporan
-                </a>
-                <a
-                  href="/device"
-                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
-                >
-                  Device
-                </a>
-                <a
-                  href="/status-device"
-                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
-                >
-                  Status Device
-                </a>
-                <a
-                  href="/konsentrasi"
-                  className="px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition"
-                >
-                  Spektrum
-                </a>
-              </nav>
+              {/* Navigation Links — penuh untuk guru/admin, dipangkas untuk siswa (lihat components/Nav.tsx) */}
+              <Nav variant="desktop" />
 
               {/* User Menu */}
               <div className="flex items-center gap-2">
@@ -105,18 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </header>
 
         {/* Mobile Subnav */}
-        <div className="md:hidden bg-slate-100 border-b border-slate-200 px-4 py-2 flex justify-around text-xs font-medium">
-          <a href="/" className="text-slate-600 hover:text-blue-600">Dashboard</a>
-          <a href="/guru" className="text-slate-600 hover:text-blue-600">Guru</a>
-          <a href="/siswa" className="text-slate-600 hover:text-blue-600">Siswa</a>
-          <a href="/jadwal" className="text-slate-600 hover:text-blue-600">Jadwal</a>
-          <a href="/dispensasi" className="text-slate-600 hover:text-blue-600">Dispensasi</a>
-          <a href="/absensi" className="text-slate-600 hover:text-blue-600">Absensi</a>
-          <a href="/laporan" className="text-slate-600 hover:text-blue-600">Laporan</a>
-          <a href="/device" className="text-slate-600 hover:text-blue-600">Device</a>
-          <a href="/status-device" className="text-slate-600 hover:text-blue-600">Status Device</a>
-          <a href="/konsentrasi" className="text-slate-600 hover:text-blue-600">Spektrum</a>
-        </div>
+        <Nav variant="mobile" />
 
         {/* Main Content Area */}
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
