@@ -18,6 +18,10 @@ class LoginResponse(BaseModel):
     email: str
     nama: str
     role: str
+    # Hanya terisi kalau role == "siswa" -- client Android memakai NIS ini
+    # (bukan email) untuk mencocokkan ke siswa_cache lokal (sumber identitas
+    # siswa yang sudah dipakai di seluruh alur NIS/enrollment yang ada).
+    nis: Optional[str] = None
 
 
 # Nilai `status_kehadiran_otomatis` yang boleh dikirim client saat sync.

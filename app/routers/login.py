@@ -57,7 +57,7 @@ def login_google(body: GoogleLoginRequest, db: Session = Depends(get_db)):
     siswa = db.query(Siswa).filter(Siswa.email == email, Siswa.aktif == True).first()
     if siswa:
         token = issue_siswa_jwt(siswa)
-        return LoginResponse(access_token=token, email=siswa.email, nama=siswa.nama, role="siswa")
+        return LoginResponse(access_token=token, email=siswa.email, nama=siswa.nama, role="siswa", nis=siswa.nis)
 
     # Email valid dari Google, tapi belum di-mapping admin ke akun guru
     # ataupun siswa manapun — role/akses tidak bisa ditentukan otomatis.

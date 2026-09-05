@@ -79,6 +79,7 @@ def test_login_google_siswa_terdaftar_role_siswa(client, db_session, monkeypatch
     assert body["role"] == "siswa"
     assert body["email"] == "budi@sekolah.sch.id"
     assert body["nama"] == "Budi"
+    assert body["nis"] == "22001"  # dipakai client Android mencocokkan ke siswa_cache lokal
 
 
 def test_login_google_guru_tetap_prioritas(client, db_session, monkeypatch):
