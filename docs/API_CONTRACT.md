@@ -153,8 +153,12 @@ terlepas dari koordinat yang dikirim.
 
 **Kiosk-lah yang memblokir dirinya sendiri** berdasarkan `valid` di response
 ini — server hanya mencatat hasilnya (kolom `lokasi_valid_terakhir` dkk pada
-`GET /device`, ditampilkan di dashboard) untuk visibilitas admin, bukan untuk
-memaksa apa pun dari sisi server terhadap `POST /absensi/sync` itu sendiri.
+`GET /device`, ditampilkan di dashboard) untuk visibilitas admin, dan tidak
+menolak `POST /absensi/sync` berdasarkan geofencing. Satu-satunya jejak
+mock di jalur absensi: kalau kiosk sempat membuat record SEBELUM blokir
+mock aktif, client mengirim `lokasi_mock: true` di record itu (lihat
+bagian 2 `POST /absensi/sync`) — server menyimpan tanda itu dan record
+ikut muncul di `GET /absensi/perlu-verifikasi`, tetap **tanpa menolak**.
 
 **Fallback offline:** kalau `POST /lokasi/cek` gagal dihubungi (device
 offline), client TIDAK cuma diam memakai status lama selamanya — dia
@@ -339,7 +343,8 @@ Content-Type: application/json
       "jam_aktual": "2026-08-23T07:02:15+08:00",
       "status_kehadiran_otomatis": "NORMAL",
       "catatan": null,
-      "device_id": "gerbang-utama-01"
+      "device_id": "gerbang-utama-01",
+      "lokasi_mock": false
     }
   ]
 }
@@ -355,6 +360,13 @@ Content-Type: application/json
   kategori dispensasi (mis. `SAKIT`) — server cek ada `Dispensasi` aktif; kalau tidak,
   record itu `status="ditolak_kebijakan"` (batch lain tetap diproses). Nilai kategori
   ini dulu memicu **422 seluruh batch** — sekarang diterima (PRD R-P0-1).
+- `lokasi_mock` (opsional, default `false`): kirim `true` kalau client mendeteksi
+  lokasi perangkat berasal dari mock-location (fake GPS) saat record dibuat.
+  Server **tidak menolak** record karena ini — record tetap `disimpan`, hanya
+  ditandai `lokasi_mock=true` di DB dan otomatis ikut muncul di
+  `GET /absensi/perlu-verifikasi` supaya guru piket meninjaunya. Client lama
+  yang tak mengirim field ini tetap kompatibel. (Blokir kiosk saat mock
+  terdeteksi tetap tanggung jawab client — lihat bagian 1.4.)
 
 Response:
 

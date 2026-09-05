@@ -6,7 +6,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from sqlalchemy.sql import expression, func
 
 from app.database import Base
 
@@ -154,6 +154,13 @@ class Absensi(Base):
     device_id = Column(String(50), ForeignKey("device.device_id"))
     approved_by = Column(Integer, ForeignKey("guru.id"))
     approved_at = Column(DateTime)
+
+    # True kalau client menandai lokasi perangkat berasal dari mock-location
+    # (fake GPS) saat record ini dibuat. Server TIDAK menolak record —
+    # hanya menyimpan tanda ini supaya guru piket bisa meninjau (record
+    # tetap muncul di /absensi/perlu-verifikasi). Batas deteksi GPS palsu:
+    # lihat docs/API_CONTRACT.md bagian Geofencing.
+    lokasi_mock = Column(Boolean, nullable=False, default=False, server_default=expression.false())
 
     synced_at = Column(DateTime, server_default=func.now())
 

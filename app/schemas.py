@@ -47,6 +47,10 @@ class AbsensiRecordIn(BaseModel):
     status_kehadiran_otomatis: StatusKehadiran = "NORMAL"
     catatan: Optional[str] = None
     device_id: str
+    # Client menandai lokasi mock (fake GPS) terdeteksi saat record dibuat.
+    # Default False supaya client lama (tanpa field ini) tetap kompatibel.
+    # Server hanya MENYIMPAN tanda ini — tidak menolak record.
+    lokasi_mock: bool = False
 
 
 class SyncRequest(BaseModel):

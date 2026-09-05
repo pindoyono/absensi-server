@@ -229,3 +229,43 @@ def test_list_siswa_hanya_siswa_aktif(client, db_session):
     r = client.get("/siswa", headers=DEV)
     assert r.status_code == 200
     assert all(s["nis"] != "99999" for s in r.json())
+
+
+# ---------- Tandai (bukan tolak) absensi dari lokasi mock / fake GPS ----------
+
+def _piket_headers(db_session):
+    from app.auth import issue_internal_jwt
+    return {"Authorization": f"Bearer {issue_internal_jwt(db_session.query(models.Guru).get(2))}"}
+
+
+def test_sync_lokasi_mock_tetap_disimpan_tidak_ditolak(client, db_session):
+    rid = uuid.uuid4()
+    r = client.post("/absensi/sync", json={"records": [_rec(record_id=str(rid), lokasi_mock=True)]}, headers=DEV)
+    assert r.status_code == 200, r.text
+    assert r.json()["hasil"][0]["status"] == "disimpan"
+    row = db_session.query(models.Absensi).filter_by(record_id=rid).one()
+    assert row.lokasi_mock is True
+
+
+def test_sync_tanpa_field_lokasi_mock_default_false(client, db_session):
+    rid = uuid.uuid4()
+    r = client.post("/absensi/sync", json={"records": [_rec(record_id=str(rid))]}, headers=DEV)
+    assert r.status_code == 200, r.text
+    row = db_session.query(models.Absensi).filter_by(record_id=rid).one()
+    assert row.lokasi_mock is False
+
+
+def test_record_lokasi_mock_muncul_di_perlu_verifikasi(client, db_session):
+    rid = str(uuid.uuid4())
+    client.post("/absensi/sync", json={"records": [_rec(record_id=rid, lokasi_mock=True)]}, headers=DEV)
+    r = client.get("/absensi/perlu-verifikasi", headers=_piket_headers(db_session))
+    assert r.status_code == 200, r.text
+    hit = [x for x in r.json() if str(x["record_id"]) == rid]
+    assert len(hit) == 1 and hit[0]["lokasi_mock"] is True
+
+
+def test_record_normal_tanpa_mock_tidak_muncul_di_perlu_verifikasi(client, db_session):
+    rid = str(uuid.uuid4())
+    client.post("/absensi/sync", json={"records": [_rec(record_id=rid)]}, headers=DEV)
+    r = client.get("/absensi/perlu-verifikasi", headers=_piket_headers(db_session))
+    assert all(str(x["record_id"]) != rid for x in r.json())

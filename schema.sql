@@ -144,6 +144,11 @@ CREATE TABLE absensi (
         -- NORMAL | TERLAMBAT | PULANG_CEPAT | IZIN | SAKIT
     catatan TEXT,
 
+    lokasi_mock BOOLEAN NOT NULL DEFAULT false,
+        -- client menandai lokasi mock (fake GPS) saat record dibuat.
+        -- Server TIDAK menolak record ini — hanya menyimpan tandanya;
+        -- record muncul di /absensi/perlu-verifikasi untuk ditinjau guru piket.
+
     device_id VARCHAR(50) REFERENCES device(device_id),
     approved_by INT REFERENCES guru(id),
     approved_at TIMESTAMP,

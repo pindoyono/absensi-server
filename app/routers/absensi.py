@@ -160,6 +160,9 @@ def sync_absensi(
                 status_kehadiran_otomatis=rec.status_kehadiran_otomatis,
                 catatan=rec.catatan,
                 device_id=rec.device_id,
+                # Tandai saja — record TIDAK ditolak karena mock. Guru piket
+                # meninjau lewat /absensi/perlu-verifikasi (lihat filter di sana).
+                lokasi_mock=rec.lokasi_mock,
             )
             db.add(row)
             savepoint.commit()
@@ -195,15 +198,20 @@ def list_perlu_verifikasi(
     db: Session = Depends(get_db),
     guru: Guru = Depends(require_role("admin", "guru_piket")),
 ):
-    """Daftar absensi hari ini yang status otomatisnya bukan NORMAL
-    dan belum di-approve — ini yang ditampilkan di dashboard guru piket."""
+    """Daftar absensi hari ini yang belum di-approve dan perlu ditinjau guru
+    piket: status otomatisnya bukan NORMAL, ATAU ditandai lokasi mock (fake
+    GPS) oleh client. Record lokasi_mock tetap tersimpan (tidak ditolak) —
+    di sinilah guru piket melihat & memutuskannya."""
     from datetime import date
     rows = (
         db.query(Absensi)
         .filter(
             Absensi.tanggal == date.today(),
-            Absensi.status_kehadiran_otomatis != "NORMAL",
             Absensi.status_kehadiran_final.is_(None),
+            or_(
+                Absensi.status_kehadiran_otomatis != "NORMAL",
+                Absensi.lokasi_mock.is_(True),
+            ),
         )
         .all()
     )
@@ -310,6 +318,7 @@ def list_absensi(
             "status_efektif": status_efektif,
             "catatan": absensi.catatan,
             "device_id": absensi.device_id,
+            "lokasi_mock": absensi.lokasi_mock,
             "approved_by": absensi.approved_by,
         })
 
