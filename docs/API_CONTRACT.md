@@ -99,6 +99,53 @@ GET /auth/roster[?termasuk_nonaktif=1]       (X-Device-Id + X-Device-Api-Key)
 Client memakai ini men-*seed* `akun_lokal` untuk login offline — role = sumber
 kebenaran server. **Tidak** mengirim password/hash. PRD R-P1-2.
 
+### 1.4 Geofencing per device
+
+Membatasi kiosk agar hanya bisa dipakai absen di lokasi fisik tertentu. Opt-in
+per device — device yang belum diatur lokasinya (`lokasi_lat`/`lng` NULL)
+tidak pernah diblokir, jadi fitur ini aman ditambahkan tanpa mengganggu kiosk
+lama yang sudah jalan.
+
+**Admin mengatur titik acuan** (dashboard web, klik pin di peta):
+
+```
+PUT /device/{device_id}/lokasi
+Authorization: Bearer <JWT admin>
+{ "lat": -3.4295, "lng": 116.4396, "radius_meter": 100 }
+```
+
+**Kiosk melapor secara berkala** (bukan per-scan absensi — device tidak
+berpindah antar scan wajah, dan minta fix GPS tiap scan terlalu lambat untuk
+alur pengenalan wajah). Client Android memanggil ini lewat siklus sync
+(`SyncService` step 7b), tiap ~15 menit + saat kiosk dibuka:
+
+```
+POST /device/{device_id}/lokasi/cek
+X-Device-Api-Key: <api_key device>
+{ "tersedia": true, "lat": -3.4294, "lng": 116.4397, "akurasi_meter": 8.2, "mock": false }
+
+→ { "valid": true, "alasan": "dalam radius", "jarak_meter": 12.4 }
+```
+
+`tersedia: false` (izin lokasi ditolak / GPS mati) dan `mock: true` (OS
+mendeteksi mock-location provider) SELALU menghasilkan `valid: false`,
+terlepas dari koordinat yang dikirim.
+
+**Kiosk-lah yang memblokir dirinya sendiri** berdasarkan `valid` di response
+ini — server hanya mencatat hasilnya (kolom `lokasi_valid_terakhir` dkk pada
+`GET /device`, ditampilkan di dashboard) untuk visibilitas admin, bukan untuk
+memaksa apa pun dari sisi server terhadap `POST /absensi/sync` itu sendiri.
+
+**Batas deteksi GPS palsu — penting untuk dipahami:** flag `mock` bergantung
+pada `LocationCompat.isMock()` Android, yang andal mendeteksi pemakaian
+fitur "Select mock location app" bawaan Developer Options. Ini BUKAN jaminan
+mutlak — di device root dengan modul Xposed/Magisk yang secara spesifik
+memalsukan lapisan lokasi sistem, flag ini bisa ikut dipalsukan, dan APK
+yang dimodifikasi bisa melewati pengecekan ini sama sekali (pengecekan
+berjalan di sisi client, di luar kendali server). Anggap ini pertahanan
+lapis-pertama terhadap penyalahgunaan biasa, bukan bukti kriptografis
+terhadap penyerang yang punya akses root ke device kiosk itu sendiri.
+
 ---
 
 ## 2. Alur Enrollment Wajah

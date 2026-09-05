@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import { Button, Badge, Skeleton } from "@/components/ui/Base";
+
+// Leaflet menyentuh `window` saat modul dievaluasi — harus dimuat client-only,
+// SSR Next.js akan crash kalau di-import langsung di top-level.
+const LokasiMapModal = dynamic(() => import("@/components/LokasiMapModal"), { ssr: false });
 
 const API_BASE = "https://absen.smkn2malinau.sch.id";
 
@@ -19,6 +24,13 @@ interface Device {
     jadwal_jam_lalu: number | null;
     dispensasi_jam_lalu: number | null;
     health_dilaporkan_pada: string | null;
+    // Geofencing per device
+    lokasi_lat: number | null;
+    lokasi_lng: number | null;
+    radius_meter: number | null;
+    lokasi_valid_terakhir: boolean | null;
+    lokasi_alasan_terakhir: string | null;
+    lokasi_dicek_pada: string | null;
 }
 
 const AMBANG_BASI_JAM = 24;
@@ -73,6 +85,9 @@ export default function DevicePage() {
     // Aksi per baris
     const [busyId, setBusyId] = useState<string | null>(null);
     const [regenResult, setRegenResult] = useState<{ device_id: string; api_key: string } | null>(null);
+
+    // Modal atur lokasi (geofencing)
+    const [lokasiDevice, setLokasiDevice] = useState<Device | null>(null);
 
     const loadDevices = useCallback(async (t: string) => {
         setLoading(true);
@@ -226,6 +241,19 @@ export default function DevicePage() {
         }
     };
 
+    const handleSimpanLokasi = async (lat: number, lng: number, radiusMeter: number) => {
+        if (!token || !lokasiDevice) return;
+        const res = await fetch(`${API_BASE}/device/${lokasiDevice.device_id}/lokasi`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ lat, lng, radius_meter: radiusMeter }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(body?.detail ?? `HTTP ${res.status}`);
+        setLokasiDevice(null);
+        await loadDevices(token);
+    };
+
     const copyKey = async (key: string) => {
         try {
             await navigator.clipboard.writeText(key);
@@ -302,6 +330,7 @@ export default function DevicePage() {
                                     <th className="py-3 px-4 text-left">Status</th>
                                     <th className="py-3 px-4 text-left">Terakhir Terlihat</th>
                                     <th className="py-3 px-4 text-left">Kesegaran Data</th>
+                                    <th className="py-3 px-4 text-left">Geofencing</th>
                                     <th className="py-3 px-4 text-center">Aksi</th>
                                 </tr>
                             </thead>
@@ -366,7 +395,34 @@ export default function DevicePage() {
                                                 </div>
                                             </div>
                                         </td>
+                                        <td className="py-3 px-4 text-xs">
+                                            {d.lokasi_lat == null ? (
+                                                <span className="text-slate-400">Belum diatur</span>
+                                            ) : (
+                                                <div className="space-y-1">
+                                                    <Badge variant={d.lokasi_valid_terakhir === false ? "danger" : "success"}>
+                                                        {d.lokasi_valid_terakhir === false ? "Di luar lokasi" : d.lokasi_valid_terakhir === null ? "Belum dicek" : "Dalam radius"}
+                                                    </Badge>
+                                                    <div className="text-slate-400">
+                                                        radius {d.radius_meter}m
+                                                        {d.lokasi_dicek_pada && <> · dicek {formatWaktu(d.lokasi_dicek_pada)}</>}
+                                                    </div>
+                                                    {d.lokasi_alasan_terakhir && (
+                                                        <div className={d.lokasi_valid_terakhir === false ? "text-rose-600" : "text-slate-400"}>
+                                                            {d.lokasi_alasan_terakhir}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </td>
                                         <td className="py-3 px-4 text-center space-x-2 whitespace-nowrap">
+                                            <Button
+                                                variant="secondary"
+                                                className="text-xs px-2 py-1"
+                                                onClick={() => setLokasiDevice(d)}
+                                            >
+                                                Atur Lokasi
+                                            </Button>
                                             <Button
                                                 variant="secondary"
                                                 className="text-xs px-2 py-1"
@@ -485,6 +541,18 @@ export default function DevicePage() {
                         )}
                     </div>
                 </div>
+            )}
+
+            {/* Modal atur lokasi (geofencing) */}
+            {lokasiDevice && (
+                <LokasiMapModal
+                    deviceId={lokasiDevice.device_id}
+                    initialLat={lokasiDevice.lokasi_lat}
+                    initialLng={lokasiDevice.lokasi_lng}
+                    initialRadius={lokasiDevice.radius_meter}
+                    onClose={() => setLokasiDevice(null)}
+                    onSave={handleSimpanLokasi}
+                />
             )}
 
             {/* Modal hasil regenerate key */}
