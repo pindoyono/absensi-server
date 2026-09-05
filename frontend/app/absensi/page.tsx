@@ -20,6 +20,7 @@ interface Absensi {
     catatan: string | null;
     device_id: string | null;
     approved_by: number | null;
+    lokasi_mock: boolean;
 }
 
 const STATUS_OPTIONS = ["NORMAL", "TERLAMBAT", "PULANG_CEPAT", "IZIN", "SAKIT"];
@@ -337,6 +338,7 @@ export default function AbsensiPage() {
                                         Status <SortIcon col="status_efektif" />
                                     </th>
                                     <th className="py-3 px-4 text-left">Catatan</th>
+                                    <th className="py-3 px-4 text-left">Lokasi</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -361,8 +363,15 @@ export default function AbsensiPage() {
                                         </td>
                                         <td className="py-3 px-4 text-slate-500 max-w-[220px] truncate" title={a.catatan ?? ""}>
                                             {a.catatan || "-"}
-                                        </td>
-                                    </tr>
+                                        </td>                                        <td className="py-3 px-4">
+                                            {a.lokasi_mock ? (
+                                                <span title="Terdeteksi mock location (fake GPS) saat record dibuat">
+                                                    <Badge variant="danger">Mock GPS</Badge>
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs text-slate-400">Normal</span>
+                                            )}
+                                        </td>                                    </tr>
                                 ))}
                             </tbody>
                         </table>
