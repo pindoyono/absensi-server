@@ -518,6 +518,19 @@ Response memberi jam masuk/pulang yang berlaku HARI INI (sudah menghitung overri
 > `kelas_id` — lihat bagian 3). Nama yang tak dikenal server → fallback jadwal
 > sekolah-wide (bukan 404/500).
 
+**Jadwal standar bisa per-kelas** (dashboard, admin):
+- `GET /jadwal/standar` → `[{id, hari, kelas_id, kelas, jam_masuk, jam_pulang}]`
+  (`kelas_id: null` = jadwal umum semua kelas).
+- `POST /jadwal/standar` `{hari, kelas_id?, jam_masuk, jam_pulang}` — upsert per
+  `(hari, kelas_id)`. `kelas_id` kosong = jadwal umum.
+- `DELETE /jadwal/standar/{id}` — hapus 1 baris; baris khusus kelas dihapus →
+  kelas itu kembali ikut jadwal umum.
+
+Resolusi `/jadwal/efektif` & validasi `sync`: **baris khusus kelas menang** atas
+baris umum (`ORDER BY kelas_id DESC NULLS LAST`), lalu override per-tanggal
+menang atas keduanya. Kiosk tidak berubah — ia menarik `/jadwal/efektif?kelas=<nama>`
+per kelas dan meng-cache hasilnya masing-masing.
+
 Client harus:
 1. Tarik & cache jadwal ini secara berkala (idealnya tiap sync sukses), simpan ke SQLite lokal.
 2. Saat offline, pakai jadwal yang di-cache terakhir untuk menghitung `status_kehadiran_otomatis` (`TERLAMBAT` kalau jam_aktual > jam_masuk + toleransi, dst).

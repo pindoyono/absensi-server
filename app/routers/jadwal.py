@@ -122,6 +122,24 @@ def upsert_jadwal_standar(
     return {"status": "ok"}
 
 
+@router.delete("/standar/{standar_id}")
+def delete_jadwal_standar(
+    standar_id: int,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin")),
+):
+    """Hapus satu baris jadwal standar. Dipakai untuk membuang jadwal khusus
+    kelas tertentu sehingga kelas itu kembali mengikuti jadwal umum (kelas_id
+    NULL). Menghapus baris umum berarti hari itu tak punya jadwal standar
+    sama sekali (kiosk akan menganggap 'tidak ada sekolah')."""
+    row = db.query(JadwalStandar).filter(JadwalStandar.id == standar_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Jadwal standar tidak ditemukan")
+    db.delete(row)
+    db.commit()
+    return {"status": "ok"}
+
+
 @router.get("/override")
 def list_jadwal_override(
     dari_tanggal: Optional[date] = None,

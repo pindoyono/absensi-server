@@ -221,6 +221,40 @@ def test_jadwal_override_device_kirim_nama_kelas(client, db_session):
     assert r.json()["kelas"] == "XI TKR"
 
 
+def test_jadwal_standar_per_kelas(client, db_session):
+    a = models.Kelas(nama="XI A")
+    b = models.Kelas(nama="XI B")
+    db_session.add_all([a, b])
+    db_session.commit()
+
+    # jadwal umum + khusus kelas B
+    assert client.post("/jadwal/standar", headers=_hdr(), json={
+        "hari": "SENIN", "jam_masuk": "07:30:00", "jam_pulang": "15:00:00"}).status_code == 200
+    assert client.post("/jadwal/standar", headers=_hdr(), json={
+        "hari": "SENIN", "kelas_id": b.id, "jam_masuk": "07:30:00", "jam_pulang": "16:00:00"}).status_code == 200
+
+    rows = client.get("/jadwal/standar", headers=_hdr()).json()
+    b_row = [r for r in rows if r["kelas_id"] == b.id][0]
+    assert b_row["kelas"] == "XI B" and b_row["jam_pulang"] == "16:00:00"
+    umum = [r for r in rows if r["kelas_id"] is None][0]
+    assert umum["jam_pulang"] == "15:00:00"
+
+    # upsert (bukan duplikat) baris kelas B
+    client.post("/jadwal/standar", headers=_hdr(), json={
+        "hari": "SENIN", "kelas_id": b.id, "jam_masuk": "07:00:00", "jam_pulang": "16:30:00"})
+    rows = client.get("/jadwal/standar", headers=_hdr()).json()
+    assert len([r for r in rows if r["kelas_id"] == b.id]) == 1
+
+    # hapus baris kelas B → kembali ikut umum
+    assert client.delete(f"/jadwal/standar/{b_row['id']}", headers=_hdr()).status_code == 200
+    rows = client.get("/jadwal/standar", headers=_hdr()).json()
+    assert not [r for r in rows if r["kelas_id"] == b.id]
+
+    # kelas_id ngawur → 422
+    assert client.post("/jadwal/standar", headers=_hdr(), json={
+        "hari": "SENIN", "kelas_id": 9999, "jam_masuk": "07:00:00", "jam_pulang": "12:00:00"}).status_code == 422
+
+
 def test_guru_out_wali_kelas_derived(client, db_session):
     k = models.Kelas(nama="XI WALI", wali_id=2)
     db_session.add(k)

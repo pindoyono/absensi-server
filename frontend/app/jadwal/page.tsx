@@ -9,9 +9,12 @@ interface JadwalStandar {
     id?: number;
     hari: string;
     kelas: string | null;
+    kelas_id: number | null;
     jam_masuk: string;
     jam_pulang: string;
 }
+
+interface KelasOption { id: number; nama: string; }
 
 interface JadwalOverride {
     id: number;
@@ -51,6 +54,9 @@ export default function JadwalPage() {
     const [editingStandar, setEditingStandar] = useState<string | null>(null);
     const [formStandar, setFormStandar] = useState<{ jam_masuk: string; jam_pulang: string }>({ jam_masuk: "07:30", jam_pulang: "15:35" });
     const [savingStandar, setSavingStandar] = useState(false);
+    const [deletingStandarId, setDeletingStandarId] = useState<number | null>(null);
+    // null = jadwal umum (semua kelas); angka = jadwal khusus kelas itu
+    const [standarScope, setStandarScope] = useState<number | null>(null);
 
     // Jadwal Override
     const [jadwalOverride, setJadwalOverride] = useState<JadwalOverride[]>([]);
@@ -65,7 +71,7 @@ export default function JadwalPage() {
     });
     const [savingOverride, setSavingOverride] = useState(false);
     const [deletingOverrideId, setDeletingOverrideId] = useState<number | null>(null);
-    const [kelasOptions, setKelasOptions] = useState<string[]>([]);
+    const [kelasOptions, setKelasOptions] = useState<KelasOption[]>([]);
 
     const loadStandar = useCallback(async (t: string) => {
         try {
@@ -114,7 +120,11 @@ export default function JadwalPage() {
         Promise.all([loadStandar(t), loadOverride(t)]).finally(() => setLoading(false));
         fetch(`${API_BASE}/kelas`, { headers: { Authorization: `Bearer ${t}` } })
             .then((r) => (r.ok ? r.json() : []))
-            .then((d) => setKelasOptions(Array.isArray(d) ? d.map((k: any) => k.nama).filter(Boolean).sort() : []))
+            .then((d) => setKelasOptions(
+                Array.isArray(d)
+                    ? d.map((k: any) => ({ id: k.id, nama: k.nama })).sort((a: KelasOption, b: KelasOption) => a.nama.localeCompare(b.nama))
+                    : []
+            ))
             .catch(() => setKelasOptions([]));
     }, [loadStandar, loadOverride]);
 
@@ -130,7 +140,7 @@ export default function JadwalPage() {
                 },
                 body: JSON.stringify({
                     hari,
-                    kelas: null,
+                    kelas_id: standarScope,
                     jam_masuk: formStandar.jam_masuk,
                     jam_pulang: formStandar.jam_pulang,
                 }),
@@ -145,6 +155,27 @@ export default function JadwalPage() {
             setError(err instanceof Error ? err.message : "Gagal menyimpan jadwal");
         } finally {
             setSavingStandar(false);
+        }
+    };
+
+    const handleDeleteStandar = async (id: number) => {
+        if (!token) return;
+        if (!window.confirm("Hapus jadwal khusus kelas ini? Kelas akan kembali mengikuti jadwal umum.")) return;
+        setDeletingStandarId(id);
+        try {
+            const res = await fetch(`${API_BASE}/jadwal/standar/${id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => null);
+                throw new Error(body?.detail ?? `HTTP ${res.status}`);
+            }
+            await loadStandar(token);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Gagal menghapus jadwal");
+        } finally {
+            setDeletingStandarId(null);
         }
     };
 
@@ -239,8 +270,13 @@ export default function JadwalPage() {
         }
     };
 
+    // Baris pada scope yang sedang dipilih (umum = kelas_id null, atau kelas tertentu)
     const getStandarForHari = (hari: string): JadwalStandar | undefined => {
-        return jadwalStandar.find(j => j.hari === hari && j.kelas === null);
+        return jadwalStandar.find(j => j.hari === hari && (j.kelas_id ?? null) === standarScope);
+    };
+    // Baris umum (dipakai sebagai "warisan" saat scope kelas belum punya baris sendiri)
+    const getUmumForHari = (hari: string): JadwalStandar | undefined => {
+        return jadwalStandar.find(j => j.hari === hari && j.kelas_id == null);
     };
 
     if (loading) return (
@@ -267,9 +303,26 @@ export default function JadwalPage() {
 
             {/* Jadwal Standar */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
-                    <h2 className="text-lg font-semibold text-slate-900">Jadwal Standard (Per Hari)</h2>
-                    <p className="text-xs text-slate-500 mt-1">Berlaku untuk semua kelas kecuali ada override per tanggal</p>
+                <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h2 className="text-lg font-semibold text-slate-900">Jadwal Standard (Per Hari)</h2>
+                        <p className="text-xs text-slate-500 mt-1">
+                            {standarScope == null
+                                ? "Berlaku untuk semua kelas kecuali ada jadwal khusus kelas / override per tanggal"
+                                : "Jadwal khusus kelas ini — menimpa jadwal umum. Hari tanpa baris sendiri tetap ikut jadwal umum."}
+                        </p>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Berlaku untuk</label>
+                        <select
+                            value={standarScope ?? ""}
+                            onChange={(e) => { setStandarScope(e.target.value ? Number(e.target.value) : null); setEditingStandar(null); }}
+                            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="">Umum (semua kelas)</option>
+                            {kelasOptions.map((k) => <option key={k.id} value={k.id}>{k.nama}</option>)}
+                        </select>
+                    </div>
                 </div>
                 <table className="min-w-full text-sm">
                     <thead>
@@ -284,10 +337,13 @@ export default function JadwalPage() {
                     <tbody>
                         {HARI_LIST.map((hari) => {
                             const standar = getStandarForHari(hari);
+                            const umum = getUmumForHari(hari);
                             const defaultVal = JADWAL_DEFAULT[hari];
                             const isEditing = editingStandar === hari;
-                            const jamMasuk = standar?.jam_masuk || defaultVal.masuk;
-                            const jamPulang = standar?.jam_pulang || defaultVal.pulang;
+                            // scope kelas tanpa baris sendiri → tampilkan (dan warisi) nilai umum
+                            const warisan = standarScope != null && !standar;
+                            const jamMasuk = standar?.jam_masuk || umum?.jam_masuk || defaultVal.masuk;
+                            const jamPulang = standar?.jam_pulang || umum?.jam_pulang || defaultVal.pulang;
 
                             // Hitung jam efektif / durasi
                             const [mH, mM] = jamMasuk.split(":").map(Number);
@@ -299,7 +355,10 @@ export default function JadwalPage() {
 
                             return (
                                 <tr key={hari} className="border-b border-slate-100 hover:bg-slate-50 transition">
-                                    <td className="py-3 px-6 font-medium text-slate-800">{HARI_LABELS[hari]}</td>
+                                    <td className="py-3 px-6 font-medium text-slate-800">
+                                        {HARI_LABELS[hari]}
+                                        {warisan && <span className="ml-2 text-xs font-normal text-slate-400">ikut umum</span>}
+                                    </td>
                                     <td className="py-3 px-6">
                                         {isEditing ? (
                                             <input
@@ -309,7 +368,7 @@ export default function JadwalPage() {
                                                 className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500"
                                             />
                                         ) : (
-                                            <span className="font-mono text-slate-700">{jamMasuk}</span>
+                                            <span className={`font-mono ${warisan ? "text-slate-400" : "text-slate-700"}`}>{jamMasuk}</span>
                                         )}
                                     </td>
                                     <td className="py-3 px-6">
@@ -321,7 +380,7 @@ export default function JadwalPage() {
                                                 className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500"
                                             />
                                         ) : (
-                                            <span className="font-mono text-slate-700">{jamPulang}</span>
+                                            <span className={`font-mono ${warisan ? "text-slate-400" : "text-slate-700"}`}>{jamPulang}</span>
                                         )}
                                     </td>
                                     <td className="py-3 px-6">
@@ -346,16 +405,28 @@ export default function JadwalPage() {
                                                 </Button>
                                             </div>
                                         ) : (
-                                            <Button
-                                                onClick={() => {
-                                                    setEditingStandar(hari);
-                                                    setFormStandar({ jam_masuk: jamMasuk, jam_pulang: jamPulang });
-                                                }}
-                                                variant="secondary"
-                                                className="text-xs px-3 py-1"
-                                            >
-                                                Edit
-                                            </Button>
+                                            <div className="flex justify-center gap-2">
+                                                <Button
+                                                    onClick={() => {
+                                                        setEditingStandar(hari);
+                                                        setFormStandar({ jam_masuk: jamMasuk, jam_pulang: jamPulang });
+                                                    }}
+                                                    variant="secondary"
+                                                    className="text-xs px-3 py-1"
+                                                >
+                                                    {warisan ? "Atur khusus" : "Edit"}
+                                                </Button>
+                                                {standar && standarScope != null && (
+                                                    <Button
+                                                        onClick={() => handleDeleteStandar(standar.id!)}
+                                                        variant="danger"
+                                                        isLoading={deletingStandarId === standar.id}
+                                                        className="text-xs px-3 py-1"
+                                                    >
+                                                        {deletingStandarId === standar.id ? "" : "Hapus"}
+                                                    </Button>
+                                                )}
+                                            </div>
                                         )}
                                     </td>
                                 </tr>
@@ -473,7 +544,7 @@ export default function JadwalPage() {
                                     placeholder="Kosongkan untuk semua kelas"
                                 />
                                 <datalist id="override-kelas-list">
-                                    {kelasOptions.map((k) => <option key={k} value={k} />)}
+                                    {kelasOptions.map((k) => <option key={k.id} value={k.nama} />)}
                                 </datalist>
                             </div>
 
