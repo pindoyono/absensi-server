@@ -22,6 +22,13 @@ class DeviceIn(BaseModel):
     platform: str  # 'windows' | 'android'
 
 
+class DeviceUpdateIn(BaseModel):
+    """Field device yang boleh diubah admin setelah didaftarkan.
+    Semua opsional — hanya yang dikirim yang diubah."""
+    nama_lokasi: str | None = None
+    platform: str | None = None  # 'windows' | 'android'
+
+
 class DeviceOut(BaseModel):
     device_id: str
     nama_lokasi: str
@@ -208,6 +215,39 @@ def regenerate_key(
     device.raw_api_key = raw_key
     db.commit()
     return {"device_id": device_id, "api_key": raw_key}
+
+
+@router.patch("/{device_id}", response_model=DeviceOut)
+def update_device(
+    device_id: str,
+    body: DeviceUpdateIn,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin")),
+):
+    """Ubah metadata device (nama lokasi / platform). Tidak menyentuh api_key,
+    geofencing, atau status aktif. Nama lokasi baru ikut terkirim saat kiosk
+    provisioning ulang lewat QR (POST /device/claim)."""
+    device = db.query(Device).filter(Device.device_id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device tidak ditemukan")
+
+    if body.nama_lokasi is not None:
+        nama = body.nama_lokasi.strip()
+        if not nama:
+            raise HTTPException(status_code=422, detail="nama_lokasi tidak boleh kosong")
+        device.nama_lokasi = nama
+    if body.platform is not None:
+        if body.platform not in ("windows", "android"):
+            raise HTTPException(status_code=422, detail="platform harus 'windows' atau 'android'")
+        device.platform = body.platform
+
+    db.commit()
+    db.refresh(device)
+    print(
+        f"AUDIT device.update device_id={device_id} oleh guru_id={guru.id} "
+        f"({guru.email}) pada {datetime.utcnow().isoformat()}"
+    )
+    return device
 
 
 @router.get("/{device_id}/claim-qr", response_model=ClaimQrOut)

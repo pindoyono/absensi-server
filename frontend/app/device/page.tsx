@@ -92,6 +92,10 @@ export default function DevicePage() {
     // QR provisioning (scan di kiosk alih-alih salin api_key manual)
     const [qrData, setQrData] = useState<{ device_id: string; payload: string; expires_at: string } | null>(null);
 
+    // Edit inline nama lokasi
+    const [editNamaId, setEditNamaId] = useState<string | null>(null);
+    const [editNamaValue, setEditNamaValue] = useState("");
+
     // Modal atur lokasi (geofencing)
     const [lokasiDevice, setLokasiDevice] = useState<Device | null>(null);
 
@@ -208,6 +212,29 @@ export default function DevicePage() {
             setRegenResult({ device_id: body.device_id, api_key: body.api_key });
         } catch (err) {
             setError(err instanceof Error ? err.message : "Gagal regenerate key");
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    const handleUpdateNama = async (device_id: string) => {
+        if (!token) return;
+        const nama = editNamaValue.trim();
+        if (!nama) return;
+        setBusyId(device_id);
+        setError(null);
+        try {
+            const res = await fetch(`${API_BASE}/device/${device_id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ nama_lokasi: nama }),
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(body?.detail ?? `HTTP ${res.status}`);
+            setEditNamaId(null);
+            await loadDevices(token);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Gagal mengubah nama lokasi");
         } finally {
             setBusyId(null);
         }
@@ -407,7 +434,36 @@ export default function DevicePage() {
                                                 <span className="text-xs text-slate-400">—</span>
                                             )}
                                         </td>
-                                        <td className="py-3 px-4 text-slate-700">{d.nama_lokasi || "-"}</td>
+                                        <td className="py-3 px-4 text-slate-700">
+                                            {editNamaId === d.device_id ? (
+                                                <div className="flex items-center gap-1">
+                                                    <input
+                                                        autoFocus
+                                                        value={editNamaValue}
+                                                        onChange={(e) => setEditNamaValue(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === "Enter") handleUpdateNama(d.device_id);
+                                                            if (e.key === "Escape") setEditNamaId(null);
+                                                        }}
+                                                        className="border border-slate-300 rounded px-2 py-1 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    />
+                                                    <Button variant="secondary" className="text-xs px-2 py-1" disabled={busyId === d.device_id}
+                                                        onClick={() => handleUpdateNama(d.device_id)}>Simpan</Button>
+                                                    <Button variant="ghost" className="text-xs px-2 py-1"
+                                                        onClick={() => setEditNamaId(null)}>Batal</Button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2 group">
+                                                    <span>{d.nama_lokasi || "-"}</span>
+                                                    <button
+                                                        className="text-xs text-blue-600 opacity-0 group-hover:opacity-100 hover:underline"
+                                                        onClick={() => { setEditNamaId(d.device_id); setEditNamaValue(d.nama_lokasi || ""); }}
+                                                    >
+                                                        Ubah
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </td>
                                         <td className="py-3 px-4">
                                             <Badge variant="default">{d.platform || "-"}</Badge>
                                         </td>

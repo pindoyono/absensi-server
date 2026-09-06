@@ -122,6 +122,20 @@ Setelah berhasil, token **langsung hangus** (percobaan kedua → `404`). Token
 kedaluwarsa / tidak dikenal → `404`; body tanpa token → `400`. Server
 meng-audit-log tiap `claim-qr` dan `claim`.
 
+### 1.1b Ubah metadata device (admin)
+
+```
+PATCH /device/{device_id}
+Authorization: Bearer <JWT admin>
+{ "nama_lokasi": "Gerbang Belakang" }        # atau/plus "platform": "windows" | "android"
+```
+
+Hanya field yang dikirim yang diubah. Tidak menyentuh `api_key`, geofencing,
+atau status aktif. `nama_lokasi` kosong → `422`; `platform` selain
+windows/android → `422`; device tak ada → `404`. Response = objek device
+(sama seperti item `GET /device`). Audit-log. Nama baru ikut terkirim saat
+kiosk provisioning ulang lewat QR (`POST /device/claim`).
+
 ### 1.2 Heartbeat / kesegaran cache device
 
 ```
