@@ -91,10 +91,13 @@ CREATE TABLE device (
     nama_lokasi VARCHAR(100),               -- 'Gerbang utama', 'Gerbang belakang'
     platform VARCHAR(20),                   -- 'windows' | 'android'
     api_key_hash VARCHAR(200) NOT NULL,     -- untuk autentikasi device ke server
+    claim_token VARCHAR(64),                -- token QR provisioning sekali-pakai (POST /device/claim)
+    claim_token_expires TIMESTAMP,
     last_seen_at TIMESTAMP,
     aktif BOOLEAN DEFAULT true,
     dibuat_pada TIMESTAMP DEFAULT now()
 );
+-- catatan: kolom lain (raw_api_key, geofencing, health) ditambah lewat migrasi Alembic.
 
 -- ------------------------------------------------------------
 -- Jadwal standar (mengikuti kurikulum, Senin-Jumat)

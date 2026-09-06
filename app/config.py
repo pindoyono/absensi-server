@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     # Bisa lebih dari satu domain, dipisah koma. Ganti sesuai domain sekolah.
     allowed_email_domains: str = "smkxxx.sch.id"
 
+    # URL publik server ini (tanpa trailing slash) — di-encode ke QR provisioning
+    # device supaya kiosk yang memindai tahu harus konek ke mana. Lihat
+    # app/services/device_claim.py.
+    public_base_url: str = "https://absen.smkn2malinau.sch.id"
+
     # Dipakai untuk terbitkan & verifikasi JWT internal setelah login Google berhasil
     jwt_secret: str = "GANTI_DENGAN_SECRET_ACAK_YANG_PANJANG"
     jwt_algorithm: str = "HS256"

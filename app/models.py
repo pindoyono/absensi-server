@@ -99,6 +99,14 @@ class Device(Base):
     lokasi_alasan_terakhir = Column(String(200), nullable=True)
     lokasi_dicek_pada = Column(DateTime, nullable=True)
 
+    # Provisioning via QR (lihat app/services/device_claim.py + POST /device/claim).
+    # Token acak sekali-pakai yang di-encode ke QR saat admin menambah device.
+    # Kiosk memindainya lalu menukarnya jadi device_id + api_key. Plaintext
+    # (setara raw_api_key), berumur pendek (claim_token_expires), dikosongkan
+    # begitu ditukar.
+    claim_token = Column(String(64), nullable=True, index=True)
+    claim_token_expires = Column(DateTime, nullable=True)
+
 
 class JadwalStandar(Base):
     __tablename__ = "jadwal_standar"

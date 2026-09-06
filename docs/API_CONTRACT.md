@@ -66,7 +66,12 @@ Response (**api_key hanya tampil sekali di sini** — simpan di konfigurasi loka
   "device_id": "gerbang-utama-01",
   "api_key": "bWPQ6zMvkPZrutPiOGRogQp2auVGrWo2JBlRz8p5vSs",
   "face_encryption_key": "s6wnLcVDT-5on-ZSWvd9QZcrmLJ1PnYtjFXQZG_lWSw=",
-  "peringatan": "Simpan api_key ini sekarang — tidak akan ditampilkan lagi."
+  "peringatan": "Simpan api_key ini sekarang — tidak akan ditampilkan lagi.",
+  "claim": {
+    "token": "V1StGXR8_Z5jdHi6B-myT...",
+    "expires_at": "2026-09-06T08:00:00+08:00",
+    "payload": "{\"v\":1,\"server\":\"https://absen.smkn2malinau.sch.id\",\"token\":\"V1StGXR8_Z5jdHi6B-myT...\"}"
+  }
 }
 ```
 
@@ -76,6 +81,46 @@ Response (**api_key hanya tampil sekali di sini** — simpan di konfigurasi loka
   **Server meng-audit-log tiap panggilan** karena endpoint ini membocorkan kunci enkripsi.
 
 ✅ Sudah diuji: register device → dapat api_key → dipakai untuk sync, berhasil end-to-end.
+
+### 1.1a Provisioning via QR (opsional — alih-alih salin api_key manual)
+
+Alih-alih menyalin `device_id` + `api_key` ke kiosk, admin bisa menampilkan
+**QR** dan kiosk memindainya. QR berisi string JSON `payload`
+(`{v, server, token}`); `token` acak 256-bit, **sekali-pakai**, berumur
+`TTL_MENIT` (default 60).
+
+**Ambil / regenerasi QR** (dashboard) — selalu membuat token baru, menimpa yang lama:
+
+```
+GET /device/{device_id}/claim-qr
+Authorization: Bearer <JWT admin / guru_piket>
+
+→ { "device_id": "...", "token": "...", "expires_at": "...", "payload": "{...}" }
+```
+
+`POST /device/register` juga mengembalikan blok `claim` yang sama supaya QR
+langsung bisa ditampilkan saat device dibuat.
+
+**Kiosk menukar token** (tanpa auth — token itu sendiri buktinya):
+
+```
+POST /device/claim
+Content-Type: application/json
+
+{ "token": "V1StGXR8_Z5jdHi6B-myT..." }
+
+→ {
+    "server": "https://absen.smkn2malinau.sch.id",
+    "device_id": "gerbang-utama-01",
+    "nama_lokasi": "Gerbang Utama",
+    "api_key": "bWPQ6zMvkPZ...",
+    "face_encryption_key": "s6wnLcVDT-5on-..."
+  }
+```
+
+Setelah berhasil, token **langsung hangus** (percobaan kedua → `404`). Token
+kedaluwarsa / tidak dikenal → `404`; body tanpa token → `400`. Server
+meng-audit-log tiap `claim-qr` dan `claim`.
 
 ### 1.2 Heartbeat / kesegaran cache device
 

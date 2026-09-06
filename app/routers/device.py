@@ -11,6 +11,7 @@ from app.models import Device, Guru
 from app.auth import require_role, get_current_guru
 from app.services.device_auth import verify_device, hash_api_key, verify_api_key
 from app.services.geo import jarak_meter
+from app.services import device_claim
 
 router = APIRouter(prefix="/device", tags=["device"])
 
@@ -47,6 +48,27 @@ class DeviceOut(BaseModel):
 class DeviceHealthIn(BaseModel):
     jadwal_jam_lalu: float | None = None
     dispensasi_jam_lalu: float | None = None
+
+
+class ClaimQrOut(BaseModel):
+    """Data untuk render QR provisioning device (dipakai dashboard)."""
+    device_id: str
+    token: str
+    expires_at: datetime
+    payload: str  # string JSON yang di-encode jadi QR
+
+
+class ClaimIn(BaseModel):
+    token: str
+
+
+class ClaimOut(BaseModel):
+    """Hasil tukar token — kiosk menyimpan ini sebagai konfigurasinya."""
+    server: str
+    device_id: str
+    nama_lokasi: str | None = None
+    api_key: str
+    face_encryption_key: str
 
 
 class LokasiIn(BaseModel):
@@ -143,6 +165,9 @@ def register_device(
         api_key_hash=hash_api_key(raw_key),
         raw_api_key=raw_key,
     )
+    # Token QR provisioning — langsung dibuat supaya QR bisa ditampilkan
+    # begitu device dibuat (lihat POST /device/claim + GET /device/{id}/claim-qr).
+    claim_token, claim_expires = device_claim.buat_claim_token(row)
     db.add(row)
     db.commit()
 
@@ -159,6 +184,12 @@ def register_device(
         "api_key": raw_key,  # tampil SEKALI SAJA, simpan baik-baik
         "face_encryption_key": settings.face_encryption_key,
         "peringatan": "Simpan device_id & api_key ini sekarang — tidak akan ditampilkan lagi.",
+        # QR provisioning: kiosk bisa scan alih-alih menyalin manual.
+        "claim": {
+            "token": claim_token,
+            "expires_at": claim_expires.isoformat(),
+            "payload": device_claim.payload_qr(claim_token),
+        },
     }
 
 
@@ -177,6 +208,61 @@ def regenerate_key(
     device.raw_api_key = raw_key
     db.commit()
     return {"device_id": device_id, "api_key": raw_key}
+
+
+@router.get("/{device_id}/claim-qr", response_model=ClaimQrOut)
+def claim_qr_device(
+    device_id: str,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin", "guru_piket")),
+):
+    """Buat token QR provisioning BARU untuk device (menimpa yang lama).
+    Dashboard memanggil ini lalu me-render `payload` sebagai QR. Kiosk yang
+    memindainya menukarnya lewat POST /device/claim."""
+    device = db.query(Device).filter(Device.device_id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device tidak ditemukan")
+
+    token, expires = device_claim.buat_claim_token(device)
+    db.commit()
+    print(
+        f"AUDIT device.claim_qr device_id={device_id} oleh guru_id={guru.id} "
+        f"({guru.email}) pada {datetime.utcnow().isoformat()}"
+    )
+    return ClaimQrOut(
+        device_id=device_id,
+        token=token,
+        expires_at=expires,
+        payload=device_claim.payload_qr(token),
+    )
+
+
+@router.post("/claim", response_model=ClaimOut)
+def claim_device(body: ClaimIn, db: Session = Depends(get_db)):
+    """Tukar token QR (sekali-pakai) jadi kredensial device. TANPA auth —
+    token acak 256-bit itu sendiri yang jadi bukti. Token langsung hangus
+    setelah berhasil ditukar."""
+    token = (body.token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="token kosong")
+
+    device = db.query(Device).filter(Device.claim_token == token).first()
+    if not device or not device_claim.token_masih_berlaku(device):
+        raise HTTPException(status_code=404, detail="Token tidak valid atau sudah kedaluwarsa")
+
+    device.claim_token = None
+    device.claim_token_expires = None
+    db.commit()
+    print(
+        f"AUDIT device.claim device_id={device.device_id} pada {datetime.utcnow().isoformat()}"
+    )
+    return ClaimOut(
+        server=settings.public_base_url.rstrip("/"),
+        device_id=device.device_id,
+        nama_lokasi=device.nama_lokasi,
+        api_key=device.raw_api_key,
+        face_encryption_key=settings.face_encryption_key,
+    )
 
 
 @router.get("/{device_id}/lokasi", response_model=LokasiKonfigOut)
