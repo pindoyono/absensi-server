@@ -3,6 +3,7 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
+      TZ: Asia/Makassar
       POSTGRES_DB: absensi
       POSTGRES_USER: absensi_user
       POSTGRES_PASSWORD: ${DB_PASSWORD:-password_aman}
@@ -20,7 +21,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      TZ: Asia/Makassar        # WITA — dasar "hari ini" untuk jadwal/laporan
+      TZ: Asia/Makassar # WITA — dasar "hari ini" untuk jadwal/laporan
     depends_on:
       db:
         condition: service_healthy
