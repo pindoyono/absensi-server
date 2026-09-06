@@ -220,7 +220,7 @@ export default function SiswaPage() {
 
     const handleDelete = async (id: number, nama: string) => {
         if (!token) return;
-        if (!window.confirm(`Hapus siswa "${nama}"?`)) return;
+        if (!window.confirm(`Nonaktifkan siswa "${nama}"? (data absensi tetap, bisa diaktifkan lagi)`)) return;
         setDeletingId(id);
         try {
             const res = await fetch(`${API_BASE}/siswa/${id}`, {
@@ -234,6 +234,35 @@ export default function SiswaPage() {
             await loadSiswa(token);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Gagal menghapus");
+        } finally {
+            setDeletingId(null);
+        }
+    };
+
+    const handleHardDelete = async (id: number, nama: string, nis: string) => {
+        if (!token) return;
+        if (!window.confirm(
+            `HAPUS PERMANEN siswa "${nama}" (${nis}) beserta SEMUA absensi, dispensasi, ` +
+            `dan data wajahnya?\n\nTidak bisa di-undo. Untuk membersihkan data uji.`
+        )) return;
+        if (window.prompt(`Ketik NIS "${nis}" untuk konfirmasi:`) !== nis) {
+            setError("Konfirmasi NIS tidak cocok — dibatalkan.");
+            return;
+        }
+        setDeletingId(id);
+        try {
+            const res = await fetch(`${API_BASE}/siswa/${id}/hard`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(body?.detail ?? `HTTP ${res.status}`);
+            const t = body?.terhapus;
+            setError(null);
+            await loadSiswa(token);
+            if (t) window.alert(`Terhapus: ${t.absensi} absensi, ${t.dispensasi} dispensasi, ${t.embedding} wajah.`);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Gagal hapus permanen");
         } finally {
             setDeletingId(null);
         }
@@ -347,11 +376,19 @@ export default function SiswaPage() {
                                         <Button
                                             onClick={() => handleDelete(siswa.id, siswa.nama)}
                                             disabled={deletingId === siswa.id}
-                                            variant="danger"
-                                            isLoading={deletingId === siswa.id}
+                                            variant="secondary"
                                             className="text-xs px-2 py-1"
                                         >
-                                            {deletingId === siswa.id ? "" : "Hapus"}
+                                            Nonaktifkan
+                                        </Button>
+                                        <Button
+                                            onClick={() => handleHardDelete(siswa.id, siswa.nama, siswa.nis)}
+                                            disabled={deletingId === siswa.id}
+                                            variant="danger"
+                                            isLoading={deletingId === siswa.id}
+                                            className="text-xs px-2 py-1 bg-rose-700 hover:bg-rose-800"
+                                        >
+                                            {deletingId === siswa.id ? "" : "Hapus permanen"}
                                         </Button>
                                     </td>
                                 </tr>

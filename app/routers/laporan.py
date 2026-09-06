@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -6,11 +6,35 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Absensi, Siswa, Guru
+from app.models import Absensi, Siswa, Guru, JadwalOverride
 from app.auth import get_current_guru
 from app.services.waktu import hari_ini
 
 router = APIRouter(prefix="/laporan", tags=["laporan"])
+
+
+def _jumlah_hari_sekolah(db: Session, dari: date, sampai: date) -> int:
+    """Hari sekolah dalam rentang = SENIN–JUMAT, dikurangi tanggal yang ditandai
+    libur lewat JadwalOverride sekolah-wide (jam_masuk / jam_pulang kosong).
+    Dipakai untuk 'tanpa keterangan' di rekap — supaya akhir pekan & hari libur
+    tidak dihitung sebagai alpa."""
+    if sampai < dari:
+        return 0
+    libur = {
+        o.tanggal for o in db.query(JadwalOverride).filter(
+            JadwalOverride.tanggal >= dari,
+            JadwalOverride.tanggal <= sampai,
+            JadwalOverride.kelas.is_(None),
+        ).all()
+        if o.jam_masuk is None or o.jam_pulang is None
+    }
+    total = 0
+    d = dari
+    while d <= sampai:
+        if d.weekday() < 5 and d not in libur:  # 0=Senin .. 4=Jumat
+            total += 1
+        d += timedelta(days=1)
+    return total
 
 
 @router.get("/rekap")
@@ -34,6 +58,7 @@ def rekap_kehadiran(
         q = q.filter(Siswa.kelas == kelas)
     siswa_list = q.order_by(Siswa.nama).all()
 
+    hari_sekolah = _jumlah_hari_sekolah(db, dari_tanggal, sampai_tanggal)
     hasil = []
     for s in siswa_list:
         rekaman = (
@@ -54,10 +79,10 @@ def rekap_kehadiran(
         terlambat = sum(1 for r in rekaman if status_final(r) == "TERLAMBAT")
         izin = sum(1 for r in rekaman if status_final(r) in ("IZIN", "SAKIT"))
 
-        total_hari_sekolah = (sampai_tanggal - dari_tanggal).days + 1
-        tanpa_keterangan = max(total_hari_sekolah - len(rekaman), 0)
-        # catatan: ini estimasi kasar (asumsi semua hari dlm rentang = hari sekolah).
-        # Untuk akurasi penuh, exclude hari libur — lihat catatan di docs/API_CONTRACT.md
+        # Hari sekolah (Senin–Jumat, minus libur) − hari siswa punya record.
+        # Untuk akurasi penuh perlu kalender libur lengkap; JadwalOverride
+        # sekolah-wide sudah menutup kasus umum (libur nasional dll).
+        tanpa_keterangan = max(hari_sekolah - len(rekaman), 0)
 
         hasil.append({
             "siswa_id": s.id,

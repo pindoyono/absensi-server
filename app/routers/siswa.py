@@ -9,7 +9,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Siswa, FaceEmbedding, Guru, Device, KonsentrasiKeahlian, Absensi
+from app.models import Siswa, FaceEmbedding, Guru, Device, KonsentrasiKeahlian, Absensi, Dispensasi
 from app.auth import require_role, get_current_guru, get_guru_or_device, get_current_siswa
 from app.services.crypto import encrypt_embedding
 from app.services.waktu import hari_ini
@@ -144,6 +144,37 @@ def deactivate_siswa(
         emb.diperbarui_pada = datetime.utcnow()
     db.commit()
     return {"status": "ok", "siswa_id": siswa_id, "aktif": False}
+
+
+@router.delete("/{siswa_id}/hard")
+def hard_delete_siswa(
+    siswa_id: int,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin")),
+):
+    """HAPUS PERMANEN siswa + SEMUA data terkait (absensi, dispensasi,
+    embedding wajah). Berbeda dengan `DELETE /siswa/{id}` yang cuma
+    menonaktifkan. Untuk membersihkan data uji — TIDAK bisa di-undo.
+    Response memuat jumlah baris yang ikut terhapus."""
+    row = db.query(Siswa).filter(Siswa.id == siswa_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Siswa tidak ditemukan")
+
+    n_absensi = db.query(Absensi).filter(Absensi.siswa_id == siswa_id).delete(synchronize_session=False)
+    n_dispensasi = db.query(Dispensasi).filter(Dispensasi.siswa_id == siswa_id).delete(synchronize_session=False)
+    n_embedding = db.query(FaceEmbedding).filter(FaceEmbedding.siswa_id == siswa_id).delete(synchronize_session=False)
+    db.delete(row)
+    db.commit()
+    print(
+        f"AUDIT siswa.hard_delete siswa_id={siswa_id} nis={row.nis} "
+        f"(absensi={n_absensi}, dispensasi={n_dispensasi}, embedding={n_embedding}) "
+        f"oleh guru_id={guru.id} ({guru.email}) pada {datetime.utcnow().isoformat()}"
+    )
+    return {
+        "status": "ok",
+        "siswa_id": siswa_id,
+        "terhapus": {"absensi": n_absensi, "dispensasi": n_dispensasi, "embedding": n_embedding},
+    }
 
 
 @router.post("/{siswa_id}/aktifkan")

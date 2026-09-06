@@ -384,6 +384,26 @@ Authorization: Bearer <JWT admin>
 
 Mengembalikan `aktif=True`. Kalau embedding-nya belum terlanjur dihapus permanen (masih dalam jeda 7 hari), siswa langsung bisa absen lagi setelah kiosk sync berikutnya (`embedding_tersedia: true`). Kalau sudah terlanjur dihapus, siswa perlu di-enroll ulang wajahnya (`embedding_tersedia: false`) — endpoint `POST /siswa/{id}/enroll` sekarang menerima lagi karena `aktif` sudah `True`.
 
+**Hapus PERMANEN** (bersihkan data uji — tidak bisa di-undo):
+
+```
+DELETE /siswa/{siswa_id}/hard
+Authorization: Bearer <JWT admin>
+
+→ { "status": "ok", "siswa_id": 7, "terhapus": {"absensi": 12, "dispensasi": 1, "embedding": 1} }
+```
+
+Menghapus baris siswa + SEMUA `absensi`, `dispensasi`, `face_embedding`
+miliknya. Beda dengan `DELETE /siswa/{id}` yang cuma menonaktifkan. Audit-log.
+
+### Rekap kehadiran — `tanpa_keterangan_estimasi`
+
+`GET /laporan/rekap` menghitung `tanpa_keterangan_estimasi = (hari sekolah dalam
+rentang) − (jumlah record MASUK siswa)`. **Hari sekolah = SENIN–JUMAT**, dikurangi
+tanggal yang ditandai libur lewat `JadwalOverride` sekolah-wide (jam kosong).
+Akhir pekan & libur nasional (bila di-override) tidak lagi dihitung sebagai alpa.
+Untuk libur yang tidak di-input sebagai override, angka masih over-estimate.
+
 **Setup cron** (lihat `docs/DEPLOYMENT.md` bagian retensi): jalankan endpoint ini sekali sehari. Endpoint menolak (503) kalau `RETENSI_CRON_SECRET` belum diisi di `.env` — aman secara default, harus sengaja diaktifkan.
 
 ---
