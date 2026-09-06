@@ -106,7 +106,7 @@ export default function LokasiMapModal({
                     </button>
                     <MapContainer
                         center={posisi ?? DEFAULT_CENTER}
-                        zoom={posisi ? 17 : 13}
+                        zoom={posisi ? 19 : 16}
                         style={{ height: "100%", width: "100%" }}
                     >
                         <TileLayer
