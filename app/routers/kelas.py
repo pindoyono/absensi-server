@@ -27,6 +27,12 @@ class KelasUpdate(BaseModel):
     aktif: Optional[bool] = None
 
 
+class AnggotaKelasIn(BaseModel):
+    """Ubah anggota rombel secara massal (dipakai modal 'Anggota Kelas')."""
+    tambah: list[int] = []       # siswa_id yang dimasukkan ke rombel ini
+    keluarkan: list[int] = []    # siswa_id yang dikeluarkan (jadi tanpa rombel)
+
+
 def _serialize(k: Kelas, jumlah_siswa: int, wali_nama: Optional[str]) -> dict:
     return {
         "id": k.id,
@@ -151,3 +157,38 @@ def siswa_kelas(
         {"id": s.id, "nis": s.nis, "nama": s.nama, "enrolled": s.enrolled}
         for s in siswa
     ]
+
+
+@router.patch("/{kelas_id}/anggota")
+def ubah_anggota_kelas(
+    kelas_id: int,
+    body: AnggotaKelasIn,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin")),
+):
+    """Masukkan / keluarkan siswa dari rombel secara massal.
+
+    - `tambah`: set `kelas_id` siswa2 ini ke rombel ini (pindah dari rombel lama
+      kalau ada).
+    - `keluarkan`: kosongkan `kelas_id` siswa2 ini — hanya yang memang sedang di
+      rombel ini (abaikan yang bukan anggota, biar aman dari race).
+    """
+    kelas = db.query(Kelas).filter(Kelas.id == kelas_id).first()
+    if not kelas:
+        raise HTTPException(status_code=404, detail="Kelas tidak ditemukan")
+
+    n_tambah = n_keluar = 0
+    if body.tambah:
+        n_tambah = (
+            db.query(Siswa)
+            .filter(Siswa.id.in_(body.tambah))
+            .update({Siswa.kelas_id: kelas_id}, synchronize_session=False)
+        )
+    if body.keluarkan:
+        n_keluar = (
+            db.query(Siswa)
+            .filter(Siswa.id.in_(body.keluarkan), Siswa.kelas_id == kelas_id)
+            .update({Siswa.kelas_id: None}, synchronize_session=False)
+        )
+    db.commit()
+    return {"status": "ok", "kelas_id": kelas_id, "ditambahkan": n_tambah, "dikeluarkan": n_keluar}

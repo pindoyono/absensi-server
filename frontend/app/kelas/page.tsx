@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Badge, Skeleton } from "@/components/ui/Base";
 
@@ -16,11 +16,16 @@ type Kelas = {
     aktif: boolean;
     jumlah_siswa: number;
 };
-type SiswaRingkas = { id: number; nis: string; nama: string; kelas_id: number | null; enrolled: boolean };
+type SiswaRingkas = {
+    id: number;
+    nis: string;
+    nama: string;
+    kelas: string;
+    kelas_id: number | null;
+    enrolled: boolean;
+};
 type Guru = { id: number; nama: string; role: string };
 type Konsentrasi = { id: number; nama: string; kode: string };
-
-const TANPA_ROMBEL = -1; // id sintetis untuk kolom "Belum ada rombel"
 
 export default function KelasPage() {
     const router = useRouter();
@@ -32,17 +37,25 @@ export default function KelasPage() {
     const [konsentrasiList, setKonsentrasiList] = useState<Konsentrasi[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [dragId, setDragId] = useState<number | null>(null);
-    const [dropTarget, setDropTarget] = useState<number | null>(null);
 
-    // Modal kelas
+    // modal kelas (create / edit)
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState<Kelas | null>(null);
-    const [form, setForm] = useState<{ nama: string; tingkat: string; konsentrasi_id: number | null; konsentrasi_search: string; wali_id: number | null; aktif: boolean }>(
-        { nama: "", tingkat: "", konsentrasi_id: null, konsentrasi_search: "", wali_id: null, aktif: true }
-    );
+    const [form, setForm] = useState({
+        nama: "", tingkat: "", konsentrasi_id: null as number | null,
+        konsentrasi_search: "", wali_id: null as number | null, aktif: true,
+    });
     const [saving, setSaving] = useState(false);
     const [formError, setFormError] = useState("");
+
+    // modal anggota
+    const [anggotaKelas, setAnggotaKelas] = useState<Kelas | null>(null);
+    const [cariKiri, setCariKiri] = useState("");
+    const [cariKanan, setCariKanan] = useState("");
+    const [filterKanan, setFilterKanan] = useState<"semua" | "tanpa" | string>("tanpa");
+    const [pilihKiri, setPilihKiri] = useState<Set<number>>(new Set());
+    const [pilihKanan, setPilihKanan] = useState<Set<number>>(new Set());
+    const [proses, setProses] = useState(false);
 
     const authHeaders = useCallback(() => {
         const t = getToken();
@@ -57,7 +70,6 @@ export default function KelasPage() {
     }, [router]);
 
     const fetchAll = useCallback(async () => {
-        setLoading(true);
         try {
             const headers = authHeaders();
             const [kRes, sRes, gRes, koRes] = await Promise.all([
@@ -78,31 +90,10 @@ export default function KelasPage() {
 
     useEffect(() => { fetchAll(); }, [fetchAll]);
 
-    // --- drag & drop (native HTML5) ---
-    const pindah = async (siswaId: number, kelasId: number | null) => {
-        const sebelum = siswaList;
-        setSiswaList((list) => list.map((s) => (s.id === siswaId ? { ...s, kelas_id: kelasId } : s)));
-        try {
-            const res = await safeFetch(`${API_BASE}/siswa/${siswaId}`, {
-                method: "PATCH",
-                headers: authHeaders(),
-                body: JSON.stringify({ kelas_id: kelasId }),
-            });
-            if (!res.ok) throw new Error();
-            fetchAll(); // segarkan jumlah_siswa
-        } catch {
-            setSiswaList(sebelum); // rollback
-            setError("Gagal memindahkan siswa");
-        }
-    };
+    const konsentrasiNama = (id: number | null) =>
+        konsentrasiList.find((k) => k.id === id)?.nama ?? null;
 
-    const onDrop = (kelasId: number | null) => {
-        if (dragId != null) pindah(dragId, kelasId);
-        setDragId(null);
-        setDropTarget(null);
-    };
-
-    // --- CRUD kelas ---
+    // ---------- CRUD kelas ----------
     const openCreate = () => {
         setEditing(null);
         setForm({ nama: "", tingkat: "", konsentrasi_id: null, konsentrasi_search: "", wali_id: null, aktif: true });
@@ -113,17 +104,14 @@ export default function KelasPage() {
         setEditing(k);
         const kon = konsentrasiList.find((x) => x.id === k.konsentrasi_id);
         setForm({
-            nama: k.nama,
-            tingkat: k.tingkat ?? "",
+            nama: k.nama, tingkat: k.tingkat ?? "",
             konsentrasi_id: k.konsentrasi_id,
             konsentrasi_search: kon ? `${kon.kode} - ${kon.nama}` : "",
-            wali_id: k.wali_id,
-            aktif: k.aktif,
+            wali_id: k.wali_id, aktif: k.aktif,
         });
         setFormError("");
         setModalOpen(true);
     };
-
     const simpan = async () => {
         if (!form.nama.trim()) { setFormError("Nama kelas wajib diisi."); return; }
         setSaving(true);
@@ -151,7 +139,6 @@ export default function KelasPage() {
         }
         setSaving(false);
     };
-
     const hapus = async (k: Kelas) => {
         if (!confirm(`Hapus kelas "${k.nama}"?`)) return;
         try {
@@ -167,66 +154,105 @@ export default function KelasPage() {
         }
     };
 
-    const siswaDi = (kelasId: number | null) => siswaList.filter((s) => (s.kelas_id ?? null) === kelasId);
-    const guruWali = guruList; // semua guru bisa jadi wali
-
-    const kolom = (judul: string, kelasId: number | null, k?: Kelas) => {
-        const isDrop = dropTarget === (kelasId ?? TANPA_ROMBEL);
-        const anggota = siswaDi(kelasId);
-        return (
-            <div
-                key={kelasId ?? TANPA_ROMBEL}
-                onDragOver={(e) => { e.preventDefault(); setDropTarget(kelasId ?? TANPA_ROMBEL); }}
-                onDragLeave={() => setDropTarget(null)}
-                onDrop={() => onDrop(kelasId)}
-                className={`flex-shrink-0 w-64 rounded-xl border p-3 flex flex-col max-h-[70vh] ${
-                    isDrop ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"
-                }`}
-            >
-                <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="min-w-0">
-                        <p className="font-semibold text-slate-800 text-sm truncate">{judul}</p>
-                        <p className="text-xs text-slate-500">
-                            {anggota.length} siswa
-                            {k?.wali_nama ? ` · wali: ${k.wali_nama}` : ""}
-                        </p>
-                    </div>
-                    {k && (
-                        <div className="flex gap-1 shrink-0">
-                            <button onClick={() => openEdit(k)} className="text-blue-600 hover:underline text-xs">Edit</button>
-                            <button onClick={() => hapus(k)} className="text-rose-600 hover:underline text-xs">Hapus</button>
-                        </div>
-                    )}
-                </div>
-                <div className="space-y-1.5 overflow-y-auto flex-1 pr-1">
-                    {anggota.map((s) => (
-                        <div
-                            key={s.id}
-                            draggable
-                            onDragStart={() => setDragId(s.id)}
-                            onDragEnd={() => { setDragId(null); setDropTarget(null); }}
-                            className={`rounded-lg border px-2.5 py-1.5 bg-white cursor-grab active:cursor-grabbing text-xs ${
-                                dragId === s.id ? "opacity-40" : "border-slate-200 hover:border-slate-300"
-                            }`}
-                        >
-                            <p className="font-medium text-slate-800 truncate">{s.nama}</p>
-                            <p className="text-slate-400 font-mono">{s.nis}{s.enrolled ? "" : " · belum enroll"}</p>
-                        </div>
-                    ))}
-                    {anggota.length === 0 && (
-                        <p className="text-xs text-slate-400 text-center py-4">Tarik siswa ke sini</p>
-                    )}
-                </div>
-            </div>
-        );
+    // ---------- modal anggota ----------
+    const bukaAnggota = (k: Kelas) => {
+        setAnggotaKelas(k);
+        setCariKiri("");
+        setCariKanan("");
+        setFilterKanan("tanpa");
+        setPilihKiri(new Set());
+        setPilihKanan(new Set());
     };
+
+    const anggotaRombel = useMemo(
+        () => (anggotaKelas ? siswaList.filter((s) => s.kelas_id === anggotaKelas.id) : []),
+        [siswaList, anggotaKelas]
+    );
+    const kandidat = useMemo(() => {
+        if (!anggotaKelas) return [];
+        return siswaList.filter((s) => {
+            if (s.kelas_id === anggotaKelas.id) return false; // sudah anggota
+            if (filterKanan === "tanpa") return s.kelas_id == null;
+            if (filterKanan === "semua") return true;
+            return String(s.kelas_id) === filterKanan;
+        });
+    }, [siswaList, anggotaKelas, filterKanan]);
+
+    const cocok = (s: SiswaRingkas, q: string) =>
+        !q || s.nama.toLowerCase().includes(q.toLowerCase()) || s.nis.includes(q);
+
+    const kiriTampil = anggotaRombel.filter((s) => cocok(s, cariKiri));
+    const kananTampil = kandidat.filter((s) => cocok(s, cariKanan));
+
+    const toggle = (set: Set<number>, id: number, setter: (s: Set<number>) => void) => {
+        const n = new Set(set);
+        n.has(id) ? n.delete(id) : n.add(id);
+        setter(n);
+    };
+
+    const terapkan = async (tambah: number[], keluarkan: number[]) => {
+        if (!anggotaKelas || (!tambah.length && !keluarkan.length)) return;
+        setProses(true);
+        try {
+            const res = await safeFetch(`${API_BASE}/kelas/${anggotaKelas.id}/anggota`, {
+                method: "PATCH",
+                headers: authHeaders(),
+                body: JSON.stringify({ tambah, keluarkan }),
+            });
+            if (!res.ok) throw new Error();
+            // optimistic + refetch
+            setSiswaList((list) =>
+                list.map((s) =>
+                    tambah.includes(s.id) ? { ...s, kelas_id: anggotaKelas.id, kelas: anggotaKelas.nama }
+                    : keluarkan.includes(s.id) ? { ...s, kelas_id: null, kelas: "" }
+                    : s
+                )
+            );
+            setPilihKiri(new Set());
+            setPilihKanan(new Set());
+            fetchAll();
+        } catch {
+            setError("Gagal memperbarui anggota rombel");
+        }
+        setProses(false);
+    };
+
+    const listSiswa = (
+        rows: SiswaRingkas[],
+        dipilih: Set<number>,
+        onToggle: (id: number) => void,
+        sisiKanan: boolean
+    ) => (
+        <div className="border border-slate-200 rounded-lg overflow-y-auto flex-1 min-h-0 divide-y divide-slate-100">
+            {rows.length === 0 && (
+                <p className="text-xs text-slate-400 text-center py-8">Tidak ada data</p>
+            )}
+            {rows.map((s) => (
+                <label key={s.id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+                    <input type="checkbox" checked={dipilih.has(s.id)} onChange={() => onToggle(s.id)} />
+                    <span className="flex-1 min-w-0">
+                        <span className="font-medium text-slate-800 block truncate">{s.nama}</span>
+                        <span className="text-xs text-slate-400 font-mono">
+                            {s.nis}
+                            {!s.enrolled && " · belum enroll"}
+                        </span>
+                    </span>
+                    {sisiKanan && (
+                        <Badge variant={s.kelas_id == null ? "warning" : "default"}>
+                            {s.kelas_id == null ? "tanpa rombel" : s.kelas || "—"}
+                        </Badge>
+                    )}
+                </label>
+            ))}
+        </div>
+    );
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">Manajemen Kelas</h1>
-                    <p className="text-sm text-slate-500">Seret kartu siswa antar rombel untuk memindahkannya</p>
+                    <p className="text-sm text-slate-500">Daftar rombel &amp; pengelolaan anggotanya</p>
                 </div>
                 <Button onClick={openCreate}>+ Kelas</Button>
             </div>
@@ -234,14 +260,131 @@ export default function KelasPage() {
             {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
             {loading ? (
-                <div className="flex gap-3">{[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-64 w-64" />)}</div>
+                <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
             ) : (
-                <div className="flex gap-3 overflow-x-auto pb-3">
-                    {kolom("Belum ada rombel", null)}
-                    {kelasList.map((k) => kolom(k.nama, k.id, k))}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                        <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">
+                                <th className="py-3 px-4 text-left">Nama Rombel</th>
+                                <th className="py-3 px-4 text-left">Tingkat</th>
+                                <th className="py-3 px-4 text-left">Konsentrasi</th>
+                                <th className="py-3 px-4 text-left">Wali Kelas</th>
+                                <th className="py-3 px-4 text-center">Siswa</th>
+                                <th className="py-3 px-4 text-left">Status</th>
+                                <th className="py-3 px-4 text-center">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {kelasList.length === 0 ? (
+                                <tr><td colSpan={7} className="py-8 text-center text-slate-500">
+                                    <p className="font-medium">Belum ada rombel</p>
+                                    <p className="text-xs mt-1">Klik "+ Kelas" untuk membuat rombel baru</p>
+                                </td></tr>
+                            ) : (
+                                kelasList.map((k) => (
+                                    <tr key={k.id} className={`border-b border-slate-100 hover:bg-slate-50 transition ${!k.aktif ? "opacity-50" : ""}`}>
+                                        <td className="py-3 px-4 font-medium text-slate-800">{k.nama}</td>
+                                        <td className="py-3 px-4 text-slate-600">{k.tingkat ?? "-"}</td>
+                                        <td className="py-3 px-4 text-slate-600">{konsentrasiNama(k.konsentrasi_id) ?? "-"}</td>
+                                        <td className="py-3 px-4 text-slate-600">{k.wali_nama ?? "-"}</td>
+                                        <td className="py-3 px-4 text-center">
+                                            <Badge>{k.jumlah_siswa}</Badge>
+                                        </td>
+                                        <td className="py-3 px-4">
+                                            <Badge variant={k.aktif ? "success" : "danger"}>{k.aktif ? "Aktif" : "Nonaktif"}</Badge>
+                                        </td>
+                                        <td className="py-3 px-4 text-center space-x-2 whitespace-nowrap">
+                                            <Button onClick={() => bukaAnggota(k)} className="text-xs px-2 py-1">Anggota</Button>
+                                            <Button onClick={() => openEdit(k)} variant="secondary" className="text-xs px-2 py-1">Edit</Button>
+                                            <Button onClick={() => hapus(k)} variant="danger" className="text-xs px-2 py-1">Hapus</Button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
                 </div>
             )}
 
+            {/* ---------- Modal Anggota ---------- */}
+            {anggotaKelas && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl flex flex-col" style={{ maxHeight: "88vh" }}>
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                            <h2 className="text-lg font-bold text-slate-900">
+                                Anggota Rombel — {anggotaKelas.nama}
+                            </h2>
+                            <button onClick={() => setAnggotaKelas(null)} className="text-slate-400 hover:text-slate-700 text-xl leading-none">&times;</button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6 overflow-hidden flex-1 min-h-0">
+                            {/* KIRI: anggota terdaftar */}
+                            <div className="flex flex-col min-h-0">
+                                <div className="flex items-center justify-between mb-2">
+                                    <p className="font-semibold text-sm text-slate-700">Anggota Rombel ({anggotaRombel.length})</p>
+                                    <Button
+                                        variant="danger"
+                                        className="text-xs px-2 py-1"
+                                        disabled={proses || pilihKiri.size === 0}
+                                        onClick={() => terapkan([], [...pilihKiri])}
+                                    >
+                                        Keluarkan ({pilihKiri.size})
+                                    </Button>
+                                </div>
+                                <input
+                                    value={cariKiri}
+                                    onChange={(e) => setCariKiri(e.target.value)}
+                                    placeholder="Cari nama / NIS…"
+                                    className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm mb-2"
+                                />
+                                {listSiswa(kiriTampil, pilihKiri, (id) => toggle(pilihKiri, id, setPilihKiri), false)}
+                            </div>
+
+                            {/* KANAN: semua siswa */}
+                            <div className="flex flex-col min-h-0">
+                                <div className="flex items-center justify-between mb-2">
+                                    <p className="font-semibold text-sm text-slate-700">Tambah Siswa</p>
+                                    <Button
+                                        className="text-xs px-2 py-1"
+                                        disabled={proses || pilihKanan.size === 0}
+                                        onClick={() => terapkan([...pilihKanan], [])}
+                                    >
+                                        Masukkan ({pilihKanan.size})
+                                    </Button>
+                                </div>
+                                <div className="flex gap-2 mb-2">
+                                    <input
+                                        value={cariKanan}
+                                        onChange={(e) => setCariKanan(e.target.value)}
+                                        placeholder="Cari nama / NIS…"
+                                        className="flex-1 min-w-0 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"
+                                    />
+                                    <select
+                                        value={filterKanan}
+                                        onChange={(e) => { setFilterKanan(e.target.value); setPilihKanan(new Set()); }}
+                                        className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm max-w-[45%]"
+                                    >
+                                        <option value="tanpa">Belum ada rombel</option>
+                                        <option value="semua">Semua rombel</option>
+                                        {kelasList.filter((k) => k.id !== anggotaKelas.id).map((k) => (
+                                            <option key={k.id} value={String(k.id)}>{k.nama}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {listSiswa(kananTampil, pilihKanan, (id) => toggle(pilihKanan, id, setPilihKanan), true)}
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500">
+                            <span>Pilih siswa lalu klik "Masukkan" / "Keluarkan". Perubahan langsung tersimpan.</span>
+                            <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={() => setAnggotaKelas(null)}>Selesai</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ---------- Modal Kelas ---------- */}
             {modalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
                     <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
@@ -276,7 +419,7 @@ export default function KelasPage() {
                                 <select value={form.wali_id ?? ""} onChange={(e) => setForm({ ...form, wali_id: e.target.value ? Number(e.target.value) : null })}
                                     className="w-full border rounded-lg px-3 py-2 text-sm">
                                     <option value="">— tidak ada —</option>
-                                    {guruWali.map((g) => <option key={g.id} value={g.id}>{g.nama}</option>)}
+                                    {guruList.map((g) => <option key={g.id} value={g.id}>{g.nama}</option>)}
                                 </select>
                             </div>
                             {editing && (

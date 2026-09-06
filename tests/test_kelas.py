@@ -110,6 +110,34 @@ def test_pindah_kelas_siswa(client, db_session):
     assert client.patch(f"/siswa/{s.id}", headers=_hdr(), json={"kelas_id": 9999}).status_code == 422
 
 
+def test_ubah_anggota_massal(client, db_session):
+    a = models.Kelas(nama="A")
+    b = models.Kelas(nama="B")
+    db_session.add_all([a, b])
+    db_session.commit()
+    s1 = models.Siswa(nis="1", nama="Satu", kelas_id=None, aktif=True)
+    s2 = models.Siswa(nis="2", nama="Dua", kelas_id=b.id, aktif=True)
+    s3 = models.Siswa(nis="3", nama="Tiga", kelas_id=a.id, aktif=True)
+    db_session.add_all([s1, s2, s3])
+    db_session.commit()
+
+    # masukkan s1 (tanpa rombel) + s2 (dari B) ke A; keluarkan s3 dari A
+    r = client.patch(f"/kelas/{a.id}/anggota", headers=_hdr(),
+                     json={"tambah": [s1.id, s2.id], "keluarkan": [s3.id]})
+    assert r.status_code == 200, r.text
+    assert r.json()["ditambahkan"] == 2 and r.json()["dikeluarkan"] == 1
+
+    db_session.expire_all()
+    assert db_session.get(models.Siswa, s1.id).kelas_id == a.id
+    assert db_session.get(models.Siswa, s2.id).kelas_id == a.id
+    assert db_session.get(models.Siswa, s3.id).kelas_id is None
+
+    # keluarkan yang bukan anggota A → diabaikan (tetap 0)
+    r = client.patch(f"/kelas/{b.id}/anggota", headers=_hdr(), json={"keluarkan": [s1.id]})
+    assert r.json()["dikeluarkan"] == 0
+    assert db_session.get(models.Siswa, s1.id).kelas_id == a.id
+
+
 def test_list_kelas_via_device_auth(client, db_session):
     db_session.add(models.Kelas(nama="XII"))
     db_session.commit()
