@@ -79,6 +79,9 @@ def test_health_dengan_api_key_benar_tersimpan(client):
         json={"jadwal_jam_lalu": 1.5, "dispensasi_jam_lalu": 0.5},
     )
     assert r.status_code == 200
+    # response ikut membawa nama_lokasi + platform (kiosk menyegarkan metadata lokalnya)
+    assert r.json()["nama_lokasi"] == "Gerbang"
+    assert r.json()["platform"] == "windows"
     # verifikasi lewat endpoint baca (guru)
     tok = _login_guru(client, "admin@sekolah.sch.id")
     lst = client.get("/device/status-kesehatan", headers={"Authorization": f"Bearer {tok}"})

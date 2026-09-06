@@ -454,14 +454,14 @@ def report_device_health(
     /jadwal/efektif) -- TANPA ini, device_id bisa ditebak/dipalsukan untuk
     mengirim laporan kesehatan palsu.
     """
-    verify_device(db, device_id, x_device_api_key)
-
-    device = db.query(Device).filter(Device.device_id == device_id).first()
+    device = verify_device(db, device_id, x_device_api_key)
     device.jadwal_jam_lalu = body.jadwal_jam_lalu
     device.dispensasi_jam_lalu = body.dispensasi_jam_lalu
     device.health_dilaporkan_pada = datetime.utcnow()
     db.commit()
-    return {"status": "ok"}
+    # nama_lokasi + platform dikembalikan supaya kiosk bisa menyegarkan
+    # metadata lokalnya tiap siklus sync (admin bisa ubah lewat PATCH /device/{id}).
+    return {"status": "ok", "nama_lokasi": device.nama_lokasi, "platform": device.platform}
 
 
 @router.get("/status-kesehatan")

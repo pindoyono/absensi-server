@@ -143,8 +143,11 @@ POST /device/{device_id}/health
 X-Device-Api-Key: <api_key device>          (device_id di path harus device terdaftar)
 { "jadwal_jam_lalu": 2.5, "dispensasi_jam_lalu": 1.0 }
 ```
-`200 → {"status":"ok"}`. Best-effort tiap siklus sync; server memperbarui
-`Device.last_seen_at` + kolom kesegaran (dipantau dashboard `GET /device/status-kesehatan`).
+`200 → {"status":"ok", "nama_lokasi": "Gerbang Belakang", "platform": "windows"}`.
+Best-effort tiap siklus sync; server memperbarui `Device.last_seen_at` + kolom
+kesegaran (dipantau dashboard `GET /device/status-kesehatan`). `nama_lokasi` &
+`platform` di response = nilai TERKINI di server → kiosk memakainya untuk
+menyegarkan metadata lokalnya tiap sync (admin bisa ubah via `PATCH /device/{id}`).
 Client Android boleh mengirim field tambahan (`embedding_hari_lalu`, `pending_kirim`,
 `app_version`) — diabaikan server, bukan error. (Fitur ini milik branch device-health;
 lihat `PRD-observability-degradasi-offline-first`.)
