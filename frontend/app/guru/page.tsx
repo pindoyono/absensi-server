@@ -10,7 +10,7 @@ interface Guru {
     nama: string;
     email: string;
     role: string;
-    kelas_diampu: string | null;
+    wali_kelas: string[];
     aktif: boolean;
 }
 
@@ -27,7 +27,6 @@ const emptyForm = {
     nama: "",
     email: "",
     role: "guru_piket",
-    kelas_diampu: "",
     aktif: true,
 };
 
@@ -89,7 +88,6 @@ export default function GuruPage() {
             nama: guru.nama,
             email: guru.email,
             role: guru.role,
-            kelas_diampu: guru.kelas_diampu ?? "",
             aktif: guru.aktif,
         });
         setFormError(null);
@@ -109,7 +107,6 @@ export default function GuruPage() {
                 nama: form.nama.trim(),
                 email: form.email.trim(),
                 role: form.role,
-                kelas_diampu: form.kelas_diampu.trim() || null,
                 aktif: form.aktif,
             };
             const url = editingId
@@ -200,7 +197,7 @@ export default function GuruPage() {
                             <th className="py-3 px-4 text-left">Nama</th>
                             <th className="py-3 px-4 text-left">Email</th>
                             <th className="py-3 px-4 text-left">Role</th>
-                            <th className="py-3 px-4 text-left">Kelas Diampu</th>
+                            <th className="py-3 px-4 text-left">Wali Kelas</th>
                             <th className="py-3 px-4 text-left">Status</th>
                             <th className="py-3 px-4 text-center">Aksi</th>
                         </tr>
@@ -219,7 +216,7 @@ export default function GuruPage() {
                                     <td className="py-3 px-4 font-medium text-slate-800">{guru.nama}</td>
                                     <td className="py-3 px-4 text-slate-600">{guru.email}</td>
                                     <td className="py-3 px-4 text-slate-600">{ROLE_LABELS[guru.role] || guru.role}</td>
-                                    <td className="py-3 px-4 text-slate-600">{guru.kelas_diampu ?? "-"}</td>
+                                    <td className="py-3 px-4 text-slate-600">{guru.wali_kelas?.length ? guru.wali_kelas.join(", ") : "-"}</td>
                                     <td className="py-3 px-4">
                                         <Badge variant={guru.aktif ? "success" : "danger"}>
                                             {guru.aktif ? "Aktif" : "Nonaktif"}
@@ -302,18 +299,10 @@ export default function GuruPage() {
                                 </select>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                    Kelas Diampu (opsional)
-                                </label>
-                                <input
-                                    type="text"
-                                    value={form.kelas_diampu}
-                                    onChange={(e) => setForm({ ...form, kelas_diampu: e.target.value })}
-                                    className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                    placeholder="cth: XII RPL 1"
-                                />
-                            </div>
+                            <p className="text-xs text-slate-500 -mt-1">
+                                Penetapan <span className="font-medium">wali kelas</span> dilakukan di menu
+                                <span className="font-medium"> Kelas</span> (satu wali per rombel).
+                            </p>
 
                             <label className="flex items-center gap-2 cursor-pointer">
                                 <input

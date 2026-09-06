@@ -15,7 +15,21 @@ CREATE TABLE guru (
     email VARCHAR(150) UNIQUE NOT NULL,     -- harus domain Workspace sekolah
     role VARCHAR(20) NOT NULL DEFAULT 'guru_piket',
         -- admin | guru_piket | wali_kelas | kepala_sekolah
-    kelas_diampu VARCHAR(20),               -- diisi kalau role = wali_kelas
+    aktif BOOLEAN DEFAULT true,
+    dibuat_pada TIMESTAMP DEFAULT now()
+);
+-- catatan: wali kelas sekarang di kelas.wali_id (bukan lagi guru.kelas_diampu),
+-- lihat migrasi 0012_kelas_normalisasi.
+
+-- ------------------------------------------------------------
+-- Kelas (rombel) — sumber kebenaran daftar kelas (migrasi 0012)
+-- ------------------------------------------------------------
+CREATE TABLE kelas (
+    id SERIAL PRIMARY KEY,
+    nama VARCHAR(50) UNIQUE NOT NULL,       -- 'XI DKV A'
+    tingkat VARCHAR(10),                    -- 'XI' — opsional, grouping
+    konsentrasi_id INT REFERENCES konsentrasi_keahlian(id),
+    wali_id INT REFERENCES guru(id),        -- 1 wali per kelas
     aktif BOOLEAN DEFAULT true,
     dibuat_pada TIMESTAMP DEFAULT now()
 );
@@ -27,7 +41,7 @@ CREATE TABLE siswa (
     id SERIAL PRIMARY KEY,
     nis VARCHAR(20) UNIQUE NOT NULL,
     nama VARCHAR(100) NOT NULL,
-    kelas VARCHAR(20) NOT NULL,
+    kelas_id INT REFERENCES kelas(id),     -- NULL = belum ada rombel
     jurusan VARCHAR(150) DEFAULT 'Teknik Elektronika',
     konsentrasi_id INT REFERENCES konsentrasi_keahlian(id),
     enrolled BOOLEAN DEFAULT false,
@@ -37,7 +51,7 @@ CREATE TABLE siswa (
     dibuat_pada TIMESTAMP DEFAULT now()
 );
 
-CREATE INDEX idx_siswa_kelas ON siswa(kelas);
+CREATE INDEX ix_siswa_kelas_id ON siswa(kelas_id);
 CREATE INDEX idx_siswa_enrolled ON siswa(enrolled) WHERE enrolled = false;
 
 -- ------------------------------------------------------------
@@ -105,10 +119,10 @@ CREATE TABLE device (
 CREATE TABLE jadwal_standar (
     id SERIAL PRIMARY KEY,
     hari VARCHAR(10) NOT NULL CHECK (hari IN ('SENIN','SELASA','RABU','KAMIS','JUMAT')),
-    kelas VARCHAR(20),                      -- NULL = berlaku semua kelas
+    kelas_id INT REFERENCES kelas(id),     -- NULL = berlaku semua kelas
     jam_masuk TIME NOT NULL,
     jam_pulang TIME NOT NULL,
-    UNIQUE (hari, kelas)
+    CONSTRAINT uq_jadwal_standar_hari_kelas_id UNIQUE (hari, kelas_id)
 );
 
 -- ------------------------------------------------------------
@@ -117,7 +131,7 @@ CREATE TABLE jadwal_standar (
 CREATE TABLE jadwal_override (
     id SERIAL PRIMARY KEY,
     tanggal DATE NOT NULL,
-    kelas VARCHAR(20),                      -- NULL = berlaku semua kelas
+    kelas_id INT REFERENCES kelas(id),     -- NULL = berlaku semua kelas
     jam_masuk TIME,
     jam_pulang TIME,
     alasan TEXT,

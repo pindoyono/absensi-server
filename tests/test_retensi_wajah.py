@@ -64,7 +64,7 @@ def client(engine, db_session):
 
 
 def _seed(db, *, siswa_id, nis, dibuat_pada, diperbarui_pada=None, aktif=True):
-    siswa = models.Siswa(id=siswa_id, nis=nis, nama=f"Siswa {siswa_id}", kelas="XI", aktif=aktif)
+    siswa = models.Siswa(id=siswa_id, nis=nis, nama=f"Siswa {siswa_id}", aktif=aktif)
     db.add(siswa)
     db.flush()
     db.add(models.FaceEmbedding(

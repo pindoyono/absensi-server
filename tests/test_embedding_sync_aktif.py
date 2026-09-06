@@ -66,7 +66,12 @@ DEVICE_HEADERS = {"X-Device-Id": "kiosk01", "X-Device-Api-Key": "kunci-device-te
 
 
 def _seed_siswa_dengan_embedding(db, *, siswa_id, nis, nama, kelas, aktif=True):
-    siswa = models.Siswa(id=siswa_id, nis=nis, nama=nama, kelas=kelas, aktif=aktif)
+    k = db.query(models.Kelas).filter(models.Kelas.nama == kelas).first()
+    if not k:
+        k = models.Kelas(nama=kelas)
+        db.add(k)
+        db.flush()
+    siswa = models.Siswa(id=siswa_id, nis=nis, nama=nama, kelas_id=k.id, aktif=aktif)
     db.add(siswa)
     db.flush()
     db.add(models.FaceEmbedding(
@@ -187,7 +192,7 @@ def test_aktifkan_kembali_siswa_yang_dinonaktifkan(client, db_session):
 
 
 def test_aktifkan_siswa_yang_embeddingnya_sudah_terlanjur_dihapus(client, db_session):
-    siswa = models.Siswa(id=1, nis="22001", nama="Ahmad", kelas="XI", aktif=False)
+    siswa = models.Siswa(id=1, nis="22001", nama="Ahmad", aktif=False)
     db_session.add(siswa)
     db_session.commit()  # tidak ada FaceEmbedding sama sekali — sudah dihapus permanen
 

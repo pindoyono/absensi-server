@@ -37,8 +37,9 @@ def db_session(engine):
     # id=1 guru dan id=1 siswa SENGAJA sama -- ini justru skenario yang harus
     # dibuktikan aman (lihat docstring modul).
     s.add(models.Guru(id=1, nama="Admin", email="admin@sekolah.sch.id", role="admin", aktif=True))
-    s.add(models.Siswa(id=1, nis="22001", nama="Budi", kelas="XI", email="budi@sekolah.sch.id", aktif=True))
-    s.add(models.Siswa(id=2, nis="22002", nama="Sri", kelas="XI", email="sri@sekolah.sch.id", aktif=True))
+    s.add(models.Kelas(id=1, nama="XI"))
+    s.add(models.Siswa(id=1, nis="22001", nama="Budi", kelas_id=1, email="budi@sekolah.sch.id", aktif=True))
+    s.add(models.Siswa(id=2, nis="22002", nama="Sri", kelas_id=1, email="sri@sekolah.sch.id", aktif=True))
     s.commit()
     yield s
     s.close()
@@ -174,6 +175,6 @@ def test_create_siswa_email_duplikat_ditolak(client, db_session):
     guru = db_session.query(models.Guru).filter_by(id=1).first()
     token = issue_internal_jwt(guru)
     r = client.post("/siswa", headers={"Authorization": f"Bearer {token}"}, json={
-        "nis": "22099", "nama": "Baru", "kelas": "X", "email": "budi@sekolah.sch.id",
+        "nis": "22099", "nama": "Baru", "kelas_id": 1, "email": "budi@sekolah.sch.id",
     })
     assert r.status_code == 409

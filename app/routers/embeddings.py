@@ -52,7 +52,8 @@ def sync_embeddings(
             "siswa_id": siswa.id,
             "nis": siswa.nis,
             "nama": siswa.nama,
-            "kelas": siswa.kelas,
+            "kelas": siswa.kelas,  # nama rombel (property) — kontrak kiosk tak berubah
+            "kelas_id": siswa.kelas_id,
             "aktif": siswa.aktif,
             "embedding_encrypted": emb.embedding_encrypted.hex(),  # hex agar aman di JSON
             "model_version": emb.model_version,

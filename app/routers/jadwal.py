@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import JadwalStandar, JadwalOverride, Guru, Device
+from app.models import JadwalStandar, JadwalOverride, Guru, Device, Kelas
 from app.auth import require_role, get_current_guru, get_guru_or_device
 from app.services.waktu import hari_ini
 
@@ -15,14 +15,15 @@ router = APIRouter(prefix="/jadwal", tags=["jadwal"])
 
 class JadwalStandarIn(BaseModel):
     hari: str  # SENIN..JUMAT
-    kelas: Optional[str] = None
+    kelas_id: Optional[int] = None  # NULL = berlaku semua kelas
     jam_masuk: time
     jam_pulang: time
 
 
 class JadwalOverrideIn(BaseModel):
     tanggal: date
-    kelas: Optional[str] = None
+    kelas_id: Optional[int] = None
+    kelas: Optional[str] = None  # kompat: nama kelas (di-resolve ke kelas_id)
     jam_masuk: Optional[time] = None
     jam_pulang: Optional[time] = None
     alasan: Optional[str] = None
@@ -32,9 +33,14 @@ class JadwalOverrideDeviceIn(BaseModel):
     """Body POST /jadwal/override — dipakai bersama oleh JWT guru maupun
     Device API Key (PRD_JADWAL_OVERRIDE_DEVICE). Untuk guru, jam boleh
     kosong (backward-compatible); untuk device wajib terisi (divalidasi
-    manual di handler)."""
+    manual di handler).
+
+    Kelas bisa dikirim sebagai `kelas_id` (dashboard) ATAU `kelas` = nama
+    (kiosk yang belum tahu tabel kelas). Nama yang tak dikenal diperlakukan
+    sebagai NULL / berlaku semua kelas (jangan 500)."""
     tanggal: date
     kelas: Optional[str] = None
+    kelas_id: Optional[int] = None
     jam_masuk: Optional[time] = None
     jam_pulang: Optional[time] = None
     alasan: Optional[str] = None
@@ -44,9 +50,51 @@ class JadwalOverrideDeviceIn(BaseModel):
 HARI_VALID = {"SENIN", "SELASA", "RABU", "KAMIS", "JUMAT"}
 
 
+def _kelas_nama(db: Session, kelas_id: Optional[int]) -> Optional[str]:
+    if not kelas_id:
+        return None
+    return db.query(Kelas.nama).filter(Kelas.id == kelas_id).scalar()
+
+
+def _resolve_kelas_id(db: Session, nama: Optional[str]) -> Optional[int]:
+    """Nama kelas → id. Nama kosong / tak dikenal → None (school-wide)."""
+    if not nama:
+        return None
+    return db.query(Kelas.id).filter(Kelas.nama == nama).scalar()
+
+
+def _serialize_standar(db: Session, row: JadwalStandar) -> dict:
+    return {
+        "id": row.id,
+        "hari": row.hari,
+        "kelas_id": row.kelas_id,
+        "kelas": _kelas_nama(db, row.kelas_id),
+        "jam_masuk": row.jam_masuk,
+        "jam_pulang": row.jam_pulang,
+    }
+
+
+def _serialize_override(db: Session, row: JadwalOverride) -> dict:
+    return {
+        "id": row.id,
+        "tanggal": row.tanggal,
+        "kelas_id": row.kelas_id,
+        "kelas": _kelas_nama(db, row.kelas_id),
+        "jam_masuk": row.jam_masuk,
+        "jam_pulang": row.jam_pulang,
+        "alasan": row.alasan,
+        "client_id": row.client_id,
+        "device_id": row.device_id,
+        "sumber": row.sumber,
+        "dibuat_oleh": row.dibuat_oleh,
+        "dibuat_pada": row.dibuat_pada,
+    }
+
+
 @router.get("/standar")
 def list_jadwal_standar(db: Session = Depends(get_db), guru: Guru = Depends(get_current_guru)):
-    return db.query(JadwalStandar).order_by(JadwalStandar.hari).all()
+    rows = db.query(JadwalStandar).order_by(JadwalStandar.hari).all()
+    return [_serialize_standar(db, r) for r in rows]
 
 
 @router.post("/standar")
@@ -57,10 +105,12 @@ def upsert_jadwal_standar(
 ):
     if body.hari not in HARI_VALID:
         raise HTTPException(status_code=400, detail=f"hari harus salah satu dari {HARI_VALID}")
+    if body.kelas_id is not None and not db.query(Kelas).filter(Kelas.id == body.kelas_id).first():
+        raise HTTPException(status_code=422, detail=f"kelas_id {body.kelas_id} tidak ada")
 
     existing = (
         db.query(JadwalStandar)
-        .filter(JadwalStandar.hari == body.hari, JadwalStandar.kelas == body.kelas)
+        .filter(JadwalStandar.hari == body.hari, JadwalStandar.kelas_id == body.kelas_id)
         .first()
     )
     if existing:
@@ -81,7 +131,8 @@ def list_jadwal_override(
     q = db.query(JadwalOverride)
     if dari_tanggal:
         q = q.filter(JadwalOverride.tanggal >= dari_tanggal)
-    return q.order_by(JadwalOverride.tanggal.desc()).all()
+    rows = q.order_by(JadwalOverride.tanggal.desc()).all()
+    return [_serialize_override(db, r) for r in rows]
 
 
 @router.post("/override")
@@ -114,7 +165,10 @@ def create_jadwal_override(
             .first()
         )
         if existing:
-            return existing
+            return _serialize_override(db, existing)
+
+    # Kelas: dashboard kirim kelas_id; kiosk kirim nama. Nama tak dikenal → NULL.
+    kelas_id = body.kelas_id if body.kelas_id is not None else _resolve_kelas_id(db, body.kelas)
 
     if is_device:
         # FR-3: device wajib kirim jam lengkap (override lokal sudah valid
@@ -141,7 +195,7 @@ def create_jadwal_override(
 
     row = JadwalOverride(
         tanggal=body.tanggal,
-        kelas=body.kelas,
+        kelas_id=kelas_id,
         jam_masuk=body.jam_masuk,
         jam_pulang=body.jam_pulang,
         alasan=body.alasan,
@@ -153,7 +207,7 @@ def create_jadwal_override(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return row
+    return _serialize_override(db, row)
 
 @router.put("/override/{override_id}")
 def update_jadwal_override(
@@ -165,12 +219,16 @@ def update_jadwal_override(
     row = db.query(JadwalOverride).filter(JadwalOverride.id == override_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Jadwal override tidak ditemukan")
-    for k, v in body.model_dump().items():
+    kelas_id = body.kelas_id if body.kelas_id is not None else _resolve_kelas_id(db, body.kelas)
+    if kelas_id is not None and not db.query(Kelas).filter(Kelas.id == kelas_id).first():
+        raise HTTPException(status_code=422, detail=f"kelas_id {kelas_id} tidak ada")
+    for k, v in body.model_dump(exclude={"kelas"}).items():
         setattr(row, k, v)
+    row.kelas_id = kelas_id
     row.dibuat_oleh = guru.id
     db.commit()
     db.refresh(row)
-    return row
+    return _serialize_override(db, row)
 
 @router.delete("/override/{override_id}")
 def delete_jadwal_override(
@@ -199,11 +257,13 @@ def jadwal_efektif_hari_ini(
     today = hari_ini()  # tanggal WITA — server bisa jalan di UTC
     hari_nama = ["SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", None, None][today.weekday()]
 
+    kid = _resolve_kelas_id(db, kelas)  # kiosk kirim nama; None kalau tak dikenal
+
     override = (
         db.query(JadwalOverride)
         .filter(JadwalOverride.tanggal == today)
-        .filter((JadwalOverride.kelas == kelas) | (JadwalOverride.kelas.is_(None)))
-        .order_by(JadwalOverride.kelas.desc().nullslast())  # kelas spesifik menang atas NULL
+        .filter((JadwalOverride.kelas_id == kid) | (JadwalOverride.kelas_id.is_(None)))
+        .order_by(JadwalOverride.kelas_id.desc().nullslast())  # kelas spesifik menang atas NULL
         .first()
     )
     if override and override.jam_masuk and override.jam_pulang:
@@ -220,8 +280,8 @@ def jadwal_efektif_hari_ini(
     standar = (
         db.query(JadwalStandar)
         .filter(JadwalStandar.hari == hari_nama)
-        .filter((JadwalStandar.kelas == kelas) | (JadwalStandar.kelas.is_(None)))
-        .order_by(JadwalStandar.kelas.desc().nullslast())
+        .filter((JadwalStandar.kelas_id == kid) | (JadwalStandar.kelas_id.is_(None)))
+        .order_by(JadwalStandar.kelas_id.desc().nullslast())
         .first()
     )
     if not standar:

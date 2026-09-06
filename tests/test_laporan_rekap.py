@@ -27,7 +27,8 @@ def engine():
 def db_session(engine):
     s = sessionmaker(bind=engine)()
     s.add(models.Guru(id=1, nama="Admin", email="admin@sekolah.sch.id", role="admin", aktif=True))
-    s.add(models.Siswa(id=1, nis="111", nama="Ani", kelas="XI", aktif=True))
+    s.add(models.Kelas(id=1, nama="XI"))
+    s.add(models.Siswa(id=1, nis="111", nama="Ani", kelas_id=1, aktif=True))
     s.commit()
     yield s
     s.close()
@@ -64,7 +65,7 @@ def test_akhir_pekan_tidak_dihitung_sebagai_alpa(client):
 
 def test_hari_libur_override_dikurangi(client, db_session):
     # Rabu 2026-09-09 ditandai libur (jam kosong) → 4 hari sekolah, bukan 5
-    db_session.add(models.JadwalOverride(tanggal=date(2026, 9, 9), kelas=None,
+    db_session.add(models.JadwalOverride(tanggal=date(2026, 9, 9), kelas_id=None,
                                          jam_masuk=None, jam_pulang=None, alasan="libur nasional"))
     db_session.commit()
     row = _rekap(client, "2026-09-07", "2026-09-13")

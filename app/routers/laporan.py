@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Absensi, Siswa, Guru, JadwalOverride
+from app.models import Absensi, Siswa, Guru, JadwalOverride, Kelas
 from app.auth import get_current_guru
 from app.services.waktu import hari_ini
 
@@ -24,7 +24,7 @@ def _jumlah_hari_sekolah(db: Session, dari: date, sampai: date) -> int:
         o.tanggal for o in db.query(JadwalOverride).filter(
             JadwalOverride.tanggal >= dari,
             JadwalOverride.tanggal <= sampai,
-            JadwalOverride.kelas.is_(None),
+            JadwalOverride.kelas_id.is_(None),
         ).all()
         if o.jam_masuk is None or o.jam_pulang is None
     }
@@ -50,12 +50,16 @@ def rekap_kehadiran(
     kehadiran" di dashboard. Wali kelas otomatis dibatasi ke kelas yang
     diampu saja (role-based, bukan cuma UI-level filtering).
     """
-    if guru.role == "wali_kelas":
-        kelas = guru.kelas_diampu
-
     q = db.query(Siswa).filter(Siswa.aktif == True)
-    if kelas:
-        q = q.filter(Siswa.kelas == kelas)
+    if guru.role == "wali_kelas":
+        wali_kelas_ids = [k.id for k in db.query(Kelas.id).filter(Kelas.wali_id == guru.id).all()]
+        q = q.filter(Siswa.kelas_id.in_(wali_kelas_ids or [-1]))
+        kelas = ",".join(
+            k.nama for k in db.query(Kelas.nama).filter(Kelas.wali_id == guru.id).all()
+        ) or "kelas diampu"
+    elif kelas:
+        kid = db.query(Kelas.id).filter(Kelas.nama == kelas).scalar()
+        q = q.filter(Siswa.kelas_id == kid) if kid else q.filter(Siswa.id == -1)
     siswa_list = q.order_by(Siswa.nama).all()
 
     hari_sekolah = _jumlah_hari_sekolah(db, dari_tanggal, sampai_tanggal)

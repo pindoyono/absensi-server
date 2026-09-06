@@ -47,13 +47,13 @@ export default function LaporanPage() {
 
     const loadKelas = useCallback(async (t: string) => {
         try {
-            const res = await fetch(`${API_BASE}/siswa`, {
+            const res = await fetch(`${API_BASE}/kelas`, {
                 headers: { Authorization: `Bearer ${t}` },
             });
             if (!res.ok) return;
             const data = await res.json();
             if (Array.isArray(data)) {
-                setKelasOptions(Array.from(new Set(data.map((s: any) => s.kelas).filter(Boolean))).sort());
+                setKelasOptions(data.map((k: any) => k.nama).filter(Boolean).sort());
             }
         } catch {
             /* opsional */

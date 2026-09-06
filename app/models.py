@@ -18,9 +18,29 @@ class Guru(Base):
     nama = Column(String(100), nullable=False)
     email = Column(String(150), unique=True, nullable=False)
     role = Column(String(20), nullable=False, default="guru_piket")
-    kelas_diampu = Column(String(20))
     aktif = Column(Boolean, default=True)
     dibuat_pada = Column(DateTime, server_default=func.now())
+
+
+class Kelas(Base):
+    """Rombel — entitas nyata (sebelumnya cuma string bebas di Siswa.kelas dsb).
+
+    Sumber kebenaran daftar kelas. Kiosk TIDAK tahu tabel ini: semua kontrak
+    ke kiosk tetap memakai NAMA kelas (di-compute dari relasi), lihat
+    Siswa.kelas @property.
+    """
+    __tablename__ = "kelas"
+
+    id = Column(Integer, primary_key=True)
+    nama = Column(String(50), unique=True, nullable=False)          # "XI DKV A"
+    tingkat = Column(String(10))                                     # "XI" — opsional
+    konsentrasi_id = Column(Integer, ForeignKey("konsentrasi_keahlian.id"))
+    wali_id = Column(Integer, ForeignKey("guru.id"))                 # 1 wali per kelas
+    aktif = Column(Boolean, default=True)
+    dibuat_pada = Column(DateTime, server_default=func.now())
+
+    konsentrasi = relationship("KonsentrasiKeahlian")
+    wali = relationship("Guru")
 
 
 class Siswa(Base):
@@ -29,7 +49,8 @@ class Siswa(Base):
     id = Column(Integer, primary_key=True)
     nis = Column(String(20), unique=True, nullable=False)
     nama = Column(String(100), nullable=False)
-    kelas = Column(String(20), nullable=False)
+    # Rombel. NULL = "belum ada rombel" (bucket untuk di-drag di halaman Kelas).
+    kelas_id = Column(Integer, ForeignKey("kelas.id"), nullable=True)
     # Opsional — kalau diisi, siswa bisa login Google di dashboard web dengan
     # role tetap "siswa" (akses terbatas, lihat get_current_siswa di app/auth.py).
     # NIS/absensi tidak terpengaruh sama sekali — ini murni jalur login tambahan.
@@ -49,6 +70,15 @@ class Siswa(Base):
 
     face_embedding = relationship("FaceEmbedding", back_populates="siswa", uselist=False)
     konsentrasi = relationship("KonsentrasiKeahlian")
+    kelas_rel = relationship("Kelas")
+
+    @property
+    def kelas(self) -> str:
+        """Nama rombel — kontrak lama (kiosk, CSV, laporan) tetap pakai NAMA.
+
+        String kosong bila siswa belum punya rombel.
+        """
+        return self.kelas_rel.nama if self.kelas_rel else ""
 
 
 class FaceEmbedding(Base):
@@ -111,13 +141,14 @@ class Device(Base):
 class JadwalStandar(Base):
     __tablename__ = "jadwal_standar"
     __table_args__ = (
-        UniqueConstraint("hari", "kelas"),
+        UniqueConstraint("hari", "kelas_id", name="uq_jadwal_standar_hari_kelas_id"),
         CheckConstraint("hari IN ('SENIN','SELASA','RABU','KAMIS','JUMAT')"),
     )
 
     id = Column(Integer, primary_key=True)
     hari = Column(String(10), nullable=False)
-    kelas = Column(String(20))
+    # NULL = berlaku semua kelas (semantik lama dipertahankan).
+    kelas_id = Column(Integer, ForeignKey("kelas.id"), nullable=True)
     jam_masuk = Column(Time, nullable=False)
     jam_pulang = Column(Time, nullable=False)
 
@@ -127,7 +158,8 @@ class JadwalOverride(Base):
 
     id = Column(Integer, primary_key=True)
     tanggal = Column(Date, nullable=False)
-    kelas = Column(String(20))
+    # NULL = berlaku semua kelas (semantik lama dipertahankan).
+    kelas_id = Column(Integer, ForeignKey("kelas.id"), nullable=True)
     jam_masuk = Column(Time)
     jam_pulang = Column(Time)
     alasan = Column(Text)

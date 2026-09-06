@@ -27,7 +27,7 @@ def db_session(engine):
     s = sessionmaker(bind=engine)()
     s.add(models.Guru(id=1, nama="Admin", email="admin@sekolah.sch.id", role="admin", aktif=True))
     s.add(models.Guru(id=2, nama="Piket", email="piket@sekolah.sch.id", role="guru_piket", aktif=True))
-    s.add(models.Siswa(id=7, nis="junk-44", nama="44", kelas="44", aktif=True))
+    s.add(models.Siswa(id=7, nis="junk-44", nama="44", aktif=True))
     s.add(models.Absensi(record_id=uuid.uuid4(), siswa_id=7, tanggal=date(2026, 9, 8), type="MASUK",
                          jam_aktual=datetime.combine(date(2026, 9, 8), time(7, 0)),
                          status_kehadiran_otomatis="TERLAMBAT"))

@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Absensi, Device, Dispensasi, JadwalStandar, JadwalOverride, Siswa
+from app.models import Absensi, Device, Dispensasi, JadwalStandar, JadwalOverride, Siswa, Kelas
 from app.schemas import (
     SyncRequest, SyncResponse, SyncResultItem,
     ApprovalRequest,
@@ -27,7 +27,7 @@ BATAS_AWAL_MASUK_JAM = 2  # absen masuk dibuka 2 jam sebelum jam masuk standar
 # tanpa impor lintas-router ke simbol bertanda underscore.
 
 
-def _ambil_jadwal_efektif(db: Session, kelas: str | None, tanggal) -> dict | None:
+def _ambil_jadwal_efektif(db: Session, kelas_id: int | None, tanggal) -> dict | None:
     """Ambil jam masuk/pulang untuk kelas pada tanggal tertentu.
     Cek override dulu, lalu fallback ke jadwal standar.
     Return dict {jam_masuk: time, jam_pulang: time} atau None kalau tidak ada jadwal."""
@@ -38,8 +38,8 @@ def _ambil_jadwal_efektif(db: Session, kelas: str | None, tanggal) -> dict | Non
     override = (
         db.query(JadwalOverride)
         .filter(JadwalOverride.tanggal == tanggal)
-        .filter((JadwalOverride.kelas == kelas) | (JadwalOverride.kelas.is_(None)))
-        .order_by(JadwalOverride.kelas.desc().nullslast())
+        .filter((JadwalOverride.kelas_id == kelas_id) | (JadwalOverride.kelas_id.is_(None)))
+        .order_by(JadwalOverride.kelas_id.desc().nullslast())
         .first()
     )
     if override and override.jam_masuk and override.jam_pulang:
@@ -51,8 +51,8 @@ def _ambil_jadwal_efektif(db: Session, kelas: str | None, tanggal) -> dict | Non
     standar = (
         db.query(JadwalStandar)
         .filter(JadwalStandar.hari == hari_nama)
-        .filter((JadwalStandar.kelas == kelas) | (JadwalStandar.kelas.is_(None)))
-        .order_by(JadwalStandar.kelas.desc().nullslast())
+        .filter((JadwalStandar.kelas_id == kelas_id) | (JadwalStandar.kelas_id.is_(None)))
+        .order_by(JadwalStandar.kelas_id.desc().nullslast())
         .first()
     )
     if not standar:
@@ -140,8 +140,8 @@ def sync_absensi(
             # PENTING: ambil kelas siswa yang SEBENARNYA -- jadwal bisa
             # berbeda per kelas (lihat JadwalStandar/JadwalOverride yang
             # punya kolom `kelas`), jangan selalu pakai jadwal sekolah-wide.
-            kelas_siswa = db.query(Siswa.kelas).filter(Siswa.id == rec.siswa_id).scalar()
-            jadwal_efektif = _ambil_jadwal_efektif(db, kelas_siswa, rec.tanggal)
+            kelas_id_siswa = db.query(Siswa.kelas_id).filter(Siswa.id == rec.siswa_id).scalar()
+            jadwal_efektif = _ambil_jadwal_efektif(db, kelas_id_siswa, rec.tanggal)
             if jadwal_efektif:
                 penolakan = _validasi_jendela_waktu(db, rec, jadwal_efektif)
                 if penolakan:
@@ -285,20 +285,25 @@ def list_absensi(
     Query terfilter + terpaginate, join dengan siswa untuk menampilkan
     nama/NIS/kelas. Wali kelas otomatis dibatasi ke kelas yang diampu.
     """
+    wali_kelas_ids: list[int] | None = None
     if guru.role == "wali_kelas":
-        kelas = guru.kelas_diampu
+        wali_kelas_ids = [k.id for k in db.query(Kelas.id).filter(Kelas.wali_id == guru.id).all()]
+        kelas = None  # abaikan filter nama, dibatasi ke kelas yang diampu
 
     q = (
         db.query(Absensi, Siswa)
         .join(Siswa, Siswa.id == Absensi.siswa_id)
     )
 
+    if wali_kelas_ids is not None:
+        q = q.filter(Siswa.kelas_id.in_(wali_kelas_ids or [-1]))
     if dari_tanggal:
         q = q.filter(Absensi.tanggal >= dari_tanggal)
     if sampai_tanggal:
         q = q.filter(Absensi.tanggal <= sampai_tanggal)
     if kelas:
-        q = q.filter(Siswa.kelas == kelas)
+        kid = db.query(Kelas.id).filter(Kelas.nama == kelas).scalar()
+        q = q.filter(Siswa.kelas_id == kid) if kid else q.filter(Absensi.siswa_id == -1)
     if type:
         q = q.filter(Absensi.type == type)
     if siswa_id:

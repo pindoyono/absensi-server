@@ -18,7 +18,7 @@ HARI = "SENIN"
 def _setup(db: Session, *, tanggal: date | None = None):
     """Buat data minimal: 1 siswa, 1 device, 1 jadwal standar Senin."""
     tanggal = tanggal or date.today()
-    db.add(Siswa(id=1, nis="T001", nama="Siswa Tes", kelas="XI"))
+    db.add(Siswa(id=1, nis="T001", nama="Siswa Tes"))
     db.add(Device(device_id="dev1", platform="windows", api_key_hash="x"))
     db.add(JadwalStandar(hari=HARI, jam_masuk=JAM_MASUK, jam_pulang=JAM_PULANG))
     db.commit()
@@ -33,8 +33,8 @@ def _sync_absensi(db: Session, *, siswa_id=1, type_, jam_aktual: datetime, tangg
 
     # Cari kelas siswa
     siswa = db.query(Siswa).filter(Siswa.id == siswa_id).first()
-    kelas = siswa.kelas if siswa else None
-    jadwal = _ambil_jadwal_efektif(db, kelas, tanggal)
+    kelas_id = siswa.kelas_id if siswa else None
+    jadwal = _ambil_jadwal_efektif(db, kelas_id, tanggal)
 
     if jadwal:
         penolakan = _validasi_jendela_waktu(
@@ -62,7 +62,7 @@ class TestJendelaMasuk:
         tanggal = _setup(db_session, tanggal=date(2026, 8, 24))
         # jam 04:00, jadwal masuk 07:00 → earliest 05:00 → 04:00 < 05:00 → ditolak
         rec = _Record(1, "MASUK", datetime(2026, 8, 24, 4, 0), tanggal)
-        jadwal = _ambil_jadwal_efektif(db_session, "XI", tanggal)
+        jadwal = _ambil_jadwal_efektif(db_session, None, tanggal)
 
         assert jadwal is not None
         pesan = _validasi_jendela_waktu(db_session, rec, jadwal)
@@ -75,7 +75,7 @@ class TestJendelaMasuk:
         tanggal = _setup(db_session, tanggal=date(2026, 8, 24))
         # jam 05:00 = earliest (07:00 - 2h) → valid
         rec = _Record(1, "MASUK", datetime(2026, 8, 24, 5, 0), tanggal)
-        jadwal = _ambil_jadwal_efektif(db_session, "XI", tanggal)
+        jadwal = _ambil_jadwal_efektif(db_session, None, tanggal)
 
         pesan = _validasi_jendela_waktu(db_session, rec, jadwal)
         assert pesan is None
@@ -86,7 +86,7 @@ class TestJendelaMasuk:
         tanggal = _setup(db_session, tanggal=date(2026, 8, 24))
         # jam 08:30 → setelah jam masuk 07:00 → tetap diterima (terlambat, bukan ditolak)
         rec = _Record(1, "MASUK", datetime(2026, 8, 24, 8, 30), tanggal)
-        jadwal = _ambil_jadwal_efektif(db_session, "XI", tanggal)
+        jadwal = _ambil_jadwal_efektif(db_session, None, tanggal)
 
         pesan = _validasi_jendela_waktu(db_session, rec, jadwal)
         assert pesan is None
@@ -101,7 +101,7 @@ class TestJendelaPulangTanpaDispensasi:
         tanggal = _setup(db_session, tanggal=date(2026, 8, 24))
         # jam 12:00 < 15:00 → ditolak, tidak ada dispensasi
         rec = _Record(1, "PULANG", datetime(2026, 8, 24, 12, 0), tanggal)
-        jadwal = _ambil_jadwal_efektif(db_session, "XI", tanggal)
+        jadwal = _ambil_jadwal_efektif(db_session, None, tanggal)
 
         pesan = _validasi_jendela_waktu(db_session, rec, jadwal)
         assert pesan is not None
@@ -113,7 +113,7 @@ class TestJendelaPulangTanpaDispensasi:
         tanggal = _setup(db_session, tanggal=date(2026, 8, 24))
         # jam 15:00 = jam pulang → diterima
         rec = _Record(1, "PULANG", datetime(2026, 8, 24, 15, 0), tanggal)
-        jadwal = _ambil_jadwal_efektif(db_session, "XI", tanggal)
+        jadwal = _ambil_jadwal_efektif(db_session, None, tanggal)
 
         pesan = _validasi_jendela_waktu(db_session, rec, jadwal)
         assert pesan is None
@@ -124,7 +124,7 @@ class TestJendelaPulangTanpaDispensasi:
         tanggal = _setup(db_session, tanggal=date(2026, 8, 24))
         # jam 16:00 → setelah jam pulang → tetap diterima
         rec = _Record(1, "PULANG", datetime(2026, 8, 24, 16, 0), tanggal)
-        jadwal = _ambil_jadwal_efektif(db_session, "XI", tanggal)
+        jadwal = _ambil_jadwal_efektif(db_session, None, tanggal)
 
         pesan = _validasi_jendela_waktu(db_session, rec, jadwal)
         assert pesan is None
@@ -146,7 +146,7 @@ class TestJendelaPulangDenganDispensasi:
         db_session.commit()
 
         rec = _Record(1, "PULANG", datetime(2026, 8, 24, 12, 0), date(2026, 8, 24))
-        jadwal = _ambil_jadwal_efektif(db_session, "XI", date(2026, 8, 24))
+        jadwal = _ambil_jadwal_efektif(db_session, None, date(2026, 8, 24))
 
         pesan = _validasi_jendela_waktu(db_session, rec, jadwal)
         assert pesan is None  # ada dispensasi → diterima
@@ -156,7 +156,7 @@ class TestJendelaPulangDenganDispensasi:
 
         tanggal = _setup(db_session, tanggal=date(2026, 8, 24))
         # Buat SISWA 2, tapi daftarkan dispensasi untuk SISWA 2
-        db_session.add(Siswa(id=2, nis="T002", nama="Siswa Lain", kelas="XI"))
+        db_session.add(Siswa(id=2, nis="T002", nama="Siswa Lain"))
         db_session.add(Dispensasi(
             siswa_id=2, tanggal=date(2026, 8, 24),
             jenis="PULANG_CEPAT", kategori="IZIN",
@@ -166,7 +166,7 @@ class TestJendelaPulangDenganDispensasi:
 
         # Siswa 1 coba pulang → ditolak (dispensasi punya siswa 2)
         rec = _Record(1, "PULANG", datetime(2026, 8, 24, 12, 0), date(2026, 8, 24))
-        jadwal = _ambil_jadwal_efektif(db_session, "XI", date(2026, 8, 24))
+        jadwal = _ambil_jadwal_efektif(db_session, None, date(2026, 8, 24))
 
         pesan = _validasi_jendela_waktu(db_session, rec, jadwal)
         assert pesan is not None
@@ -181,7 +181,7 @@ class TestWeekend:
 
         # 2026-08-22 = Sabtu
         tanggal_sabtu = date(2026, 8, 22)
-        jadwal = _ambil_jadwal_efektif(db_session, "XI", tanggal_sabtu)
+        jadwal = _ambil_jadwal_efektif(db_session, None, tanggal_sabtu)
         assert jadwal is None
 
 

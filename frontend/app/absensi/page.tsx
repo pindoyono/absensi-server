@@ -153,17 +153,16 @@ export default function AbsensiPage() {
         }
     };
 
-    // Ambil daftar kelas unik dari endpoint siswa
+    // Daftar kelas dari master data kelas (rombel)
     const loadKelas = useCallback(async (t: string) => {
         try {
-            const res = await fetch(`${API_BASE}/siswa`, {
+            const res = await fetch(`${API_BASE}/kelas`, {
                 headers: { Authorization: `Bearer ${t}` },
             });
             if (!res.ok) return;
             const data = await res.json();
             if (Array.isArray(data)) {
-                const unik = Array.from(new Set(data.map((s: any) => s.kelas).filter(Boolean))).sort();
-                setKelasOptions(unik);
+                setKelasOptions(data.map((k: any) => k.nama).filter(Boolean).sort());
             }
         } catch {
             /* kelas opsional */

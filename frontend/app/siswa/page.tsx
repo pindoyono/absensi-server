@@ -10,6 +10,7 @@ interface Siswa {
     nis: string;
     nama: string;
     kelas: string;
+    kelas_id: number | null;
     jurusan: string;
     konsentrasi_id: number | null;
     enrolled: boolean;
@@ -25,10 +26,13 @@ interface KonsentrasiOption {
     bidang_nama?: string;
 }
 
+interface KelasOption { id: number; nama: string; }
+
 const emptyForm = {
     nis: "",
     nama: "",
-    kelas: "",
+    kelas_id: null as number | null,
+    kelas_search: "",
     jurusan: "Teknik Elektronika",
     konsentrasi_id: null as number | null,
     konsentrasi_search: "",
@@ -38,6 +42,7 @@ const emptyForm = {
 export default function SiswaPage() {
     const [siswaList, setSiswaList] = useState<Siswa[]>([]);
     const [konsentrasiOptions, setKonsentrasiOptions] = useState<KonsentrasiOption[]>([]);
+    const [kelasOptions, setKelasOptions] = useState<KelasOption[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [token, setToken] = useState<string | null>(null);
@@ -101,6 +106,10 @@ export default function SiswaPage() {
             .then(res => res.ok ? res.json() : [])
             .then(data => setKonsentrasiOptions(Array.isArray(data) ? data : []))
             .catch(() => setKonsentrasiOptions([]));
+        fetch(`${API_BASE}/kelas`, { headers: { Authorization: `Bearer ${t}` } })
+            .then(res => res.ok ? res.json() : [])
+            .then(data => setKelasOptions(Array.isArray(data) ? data.map((k: any) => ({ id: k.id, nama: k.nama })) : []))
+            .catch(() => setKelasOptions([]));
     }, [loadSiswa]);
 
     const openCreate = () => {
@@ -113,10 +122,12 @@ export default function SiswaPage() {
     const openEdit = (siswa: Siswa) => {
         setEditingId(siswa.id);
         const kon = konsentrasiOptions.find(k => k.id === siswa.konsentrasi_id);
+        const kls = kelasOptions.find(k => k.id === siswa.kelas_id);
         setForm({
             nis: siswa.nis,
             nama: siswa.nama,
-            kelas: siswa.kelas,
+            kelas_id: siswa.kelas_id,
+            kelas_search: kls ? kls.nama : (siswa.kelas ?? ""),
             jurusan: siswa.jurusan,
             konsentrasi_id: siswa.konsentrasi_id,
             konsentrasi_search: kon ? `${kon.kode} - ${kon.nama}` : siswa.jurusan,
@@ -128,8 +139,12 @@ export default function SiswaPage() {
 
     const handleSave = async () => {
         if (!token) return;
-        if (!form.nis.trim() || !form.nama.trim() || !form.kelas.trim()) {
-            setFormError("NISN, nama, dan kelas wajib diisi.");
+        if (!form.nis.trim() || !form.nama.trim()) {
+            setFormError("NISN dan nama wajib diisi.");
+            return;
+        }
+        if (form.kelas_search.trim() && form.kelas_id == null) {
+            setFormError(`Kelas "${form.kelas_search}" tidak ada. Pilih dari daftar atau buat dulu di menu Kelas.`);
             return;
         }
         setSaving(true);
@@ -138,7 +153,7 @@ export default function SiswaPage() {
             const payload = {
                 nis: form.nis.trim(),
                 nama: form.nama.trim(),
-                kelas: form.kelas.trim(),
+                kelas_id: form.kelas_id,
                 jurusan: form.jurusan,
                 konsentrasi_id: form.konsentrasi_id,
                 email: form.email.trim() || null,
@@ -312,13 +327,14 @@ export default function SiswaPage() {
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Kelas</label>
-                    <input
-                        type="text"
+                    <select
                         value={filterKelas}
                         onChange={(e) => setFilterKelas(e.target.value)}
-                        className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm w-40"
-                        placeholder="XII RPL 1"
-                    />
+                        className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm w-44"
+                    >
+                        <option value="">Semua Kelas</option>
+                        {kelasOptions.map((k) => <option key={k.id} value={k.nama}>{k.nama}</option>)}
+                    </select>
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Status Enrolled</label>
@@ -436,14 +452,28 @@ export default function SiswaPage() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Kelas</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Kelas <span className="text-slate-400 font-normal">(opsional)</span></label>
                                 <input
                                     type="text"
-                                    value={form.kelas}
-                                    onChange={(e) => setForm({ ...form, kelas: e.target.value })}
+                                    list="siswa-kelas-list"
+                                    value={form.kelas_search}
+                                    onChange={(e) => {
+                                        const v = e.target.value;
+                                        const kls = kelasOptions.find((k) => k.nama.toLowerCase() === v.toLowerCase());
+                                        setForm({ ...form, kelas_search: v, kelas_id: kls ? kls.id : null });
+                                    }}
                                     className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                    placeholder="XII RPL 1"
+                                    placeholder="Ketik untuk cari rombel…"
                                 />
+                                <datalist id="siswa-kelas-list">
+                                    {kelasOptions.map((k) => <option key={k.id} value={k.nama} />)}
+                                </datalist>
+                                {form.kelas_search.trim() && form.kelas_id == null && (
+                                    <p className="text-xs text-amber-600 mt-1">Kelas belum terdaftar — buat dulu di menu "Kelas".</p>
+                                )}
+                                {kelasOptions.length === 0 && (
+                                    <p className="text-xs text-amber-600 mt-1">Belum ada data kelas. Tambahkan di menu "Kelas".</p>
+                                )}
                             </div>
 
                             <div>
@@ -527,7 +557,9 @@ export default function SiswaPage() {
                         <h3 className="text-xl font-bold mb-4 text-slate-900">Import Siswa (CSV)</h3>
 
                         <p className="text-sm text-slate-500 mb-3">
-                            Format kolom: <code className="bg-slate-100 px-1 rounded">nis,nama,kelas,jurusan</code>.
+                            Format kolom: <code className="bg-slate-100 px-1 rounded">nis,nama,kelas_id,jurusan,konsentrasi_id</code>.
+                            Kolom <code className="bg-slate-100 px-1 rounded">kelas_id</code> diisi ID rombel (lihat daftar di menu
+                            Kelas, atau baris komentar <code className="bg-slate-100 px-1 rounded">#</code> pada template).
                             Baris dengan NISN yang sudah ada akan dilewati.
                         </p>
 

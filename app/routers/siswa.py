@@ -9,7 +9,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Siswa, FaceEmbedding, Guru, Device, KonsentrasiKeahlian, Absensi, Dispensasi
+from app.models import Siswa, FaceEmbedding, Guru, Device, KonsentrasiKeahlian, Absensi, Dispensasi, Kelas
 from app.auth import require_role, get_current_guru, get_guru_or_device, get_current_siswa
 from app.services.crypto import encrypt_embedding
 from app.services.waktu import hari_ini
@@ -22,7 +22,8 @@ router = APIRouter(prefix="/siswa", tags=["siswa"])
 class SiswaIn(BaseModel):
     nis: str
     nama: str
-    kelas: str
+    # Rombel — ID relasi ke tabel `kelas`. NULL = belum ada rombel.
+    kelas_id: Optional[int] = None
     jurusan: str = "Teknik Elektronika"
     konsentrasi_id: Optional[int] = None
     # Opsional — kalau diisi, siswa ini bisa login Google di dashboard web
@@ -34,7 +35,8 @@ class SiswaOut(BaseModel):
     id: int
     nis: str
     nama: str
-    kelas: str
+    kelas_id: Optional[int] = None
+    kelas: str  # nama rombel hasil relasi — kontrak lama (kiosk/CSV/laporan)
     jurusan: str
     konsentrasi_id: Optional[int] = None
     enrolled: bool
@@ -43,6 +45,17 @@ class SiswaOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SiswaPindahKelasIn(BaseModel):
+    """Body PATCH /siswa/{id} — pindah rombel (dipakai drag-and-drop di
+    halaman Manajemen Kelas). `kelas_id` null = keluarkan dari rombel."""
+    kelas_id: Optional[int] = None
+
+
+def _validasi_kelas_id(db: Session, kelas_id: Optional[int]) -> None:
+    if kelas_id is not None and not db.query(Kelas).filter(Kelas.id == kelas_id).first():
+        raise HTTPException(status_code=422, detail=f"kelas_id {kelas_id} tidak ada")
 
 
 class EnrollRequest(BaseModel):
@@ -65,6 +78,7 @@ class EnrollRequest(BaseModel):
 @router.get("", response_model=list[SiswaOut])
 def list_siswa(
     kelas: Optional[str] = None,
+    kelas_id: Optional[int] = None,
     enrolled: Optional[bool] = None,
     db: Session = Depends(get_db),
     auth: Guru | Device = Depends(get_guru_or_device),
@@ -76,12 +90,19 @@ def list_siswa(
     siswa yang BELUM enroll di layar Enrollment. `GET /embeddings/sync` hanya
     mengirim siswa yang sudah punya embedding, jadi tidak cukup untuk itu.
     """
-    q = db.query(Siswa).filter(Siswa.aktif == True)
+    q = db.query(Siswa).outerjoin(Kelas, Kelas.id == Siswa.kelas_id).filter(Siswa.aktif == True)
+    # Kompat: kiosk & filter lama kirim `kelas` = NAMA. Resolve ke id.
     if kelas:
-        q = q.filter(Siswa.kelas == kelas)
+        target = db.query(Kelas.id).filter(Kelas.nama == kelas).scalar()
+        if not target:
+            return []  # nama kelas tak dikenal → tak ada siswa (bukan 500)
+        q = q.filter(Siswa.kelas_id == target)
+    if kelas_id is not None:
+        # sentinel 0 = "belum ada rombel"
+        q = q.filter(Siswa.kelas_id.is_(None)) if kelas_id == 0 else q.filter(Siswa.kelas_id == kelas_id)
     if enrolled is not None:
         q = q.filter(Siswa.enrolled == enrolled)
-    return q.order_by(Siswa.kelas, Siswa.nama).all()
+    return q.order_by(Kelas.nama.nullsfirst(), Siswa.nama).all()
 
 
 @router.post("", response_model=SiswaOut)
@@ -94,6 +115,7 @@ def create_siswa(
         raise HTTPException(status_code=409, detail=f"NIS {body.nis} sudah terdaftar")
     if body.email and db.query(Siswa).filter(Siswa.email == body.email).first():
         raise HTTPException(status_code=409, detail=f"Email {body.email} sudah dipakai siswa lain")
+    _validasi_kelas_id(db, body.kelas_id)
     row = Siswa(**body.model_dump())
     db.add(row)
     db.commit()
@@ -114,11 +136,32 @@ def update_siswa(
     if body.email and body.email != row.email:
         if db.query(Siswa).filter(Siswa.email == body.email).first():
             raise HTTPException(status_code=409, detail=f"Email {body.email} sudah dipakai siswa lain")
+    _validasi_kelas_id(db, body.kelas_id)
     for k, v in body.model_dump().items():
         setattr(row, k, v)
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.patch("/{siswa_id}", response_model=SiswaOut)
+def pindah_kelas_siswa(
+    siswa_id: int,
+    body: SiswaPindahKelasIn,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin")),
+):
+    """Pindahkan siswa ke rombel lain (atau keluarkan dari rombel bila
+    `kelas_id` null). Dipakai oleh drag-and-drop di halaman Manajemen Kelas."""
+    row = db.query(Siswa).filter(Siswa.id == siswa_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Siswa tidak ditemukan")
+    _validasi_kelas_id(db, body.kelas_id)
+    row.kelas_id = body.kelas_id
+    db.commit()
+    db.refresh(row)
+    return row
+
 
 @router.delete("/{siswa_id}")
 def deactivate_siswa(
@@ -221,21 +264,28 @@ def download_template_siswa_csv(
     guru: Guru = Depends(require_role("admin")),
 ):
     """
-    Download template CSV untuk import massal siswa. Kolom: nis,nama,kelas,
-    jurusan,konsentrasi_id. Baris contoh diambil dari konsentrasi keahlian
-    yang ada (jika ada) supaya user tahu format konsentrasi_id yang valid.
+    Download template CSV untuk import massal siswa. Kolom: nis,nama,kelas_id,
+    jurusan,konsentrasi_id. Kolom `kelas_id` diisi ID rombel dari menu Kelas
+    (kosongkan bila belum ada rombel). Baris komentar di atas berisi daftar
+    ID kelas yang tersedia sekarang.
     """
     output = io.StringIO()
+
+    daftar_kelas = db.query(Kelas).filter(Kelas.aktif == True).order_by(Kelas.nama).all()
+    for k in daftar_kelas:
+        output.write(f"# kelas_id {k.id} = {k.nama}\n")
+
     writer = csv.writer(output)
-    writer.writerow(["nis", "nama", "kelas", "jurusan", "konsentrasi_id"])
+    writer.writerow(["nis", "nama", "kelas_id", "jurusan", "konsentrasi_id"])
 
     # 3 baris contoh dari konsentrasi keahlian terdaftar (jika ada)
     konsentrasi = db.query(KonsentrasiKeahlian).order_by(KonsentrasiKeahlian.kode).limit(3).all()
+    contoh_kelas_id = daftar_kelas[0].id if daftar_kelas else ""
     if konsentrasi:
         for k in konsentrasi:
-            writer.writerow(["", "Contoh " + k.nama, "XII", k.nama, k.id])
+            writer.writerow(["", "Contoh " + k.nama, contoh_kelas_id, k.nama, k.id])
     else:
-        writer.writerow(["", "Contoh Siswa", "XII", "Teknik Elektronika", ""])
+        writer.writerow(["", "Contoh Siswa", contoh_kelas_id, "Teknik Elektronika", ""])
 
     csv_bytes = output.getvalue().encode("utf-8-sig")
     return Response(
@@ -246,18 +296,23 @@ def download_template_siswa_csv(
 
 @router.post("/import")
 def import_siswa_csv(
-    file: UploadFile = File(..., description="CSV kolom: nis,nama,kelas,jurusan"),
+    file: UploadFile = File(..., description="CSV kolom: nis,nama,kelas_id,jurusan,konsentrasi_id"),
     db: Session = Depends(get_db),
     guru: Guru = Depends(require_role("admin")),
 ):
     """
     Impor massal dari CSV (export dari Google Sheets sekolah).
-    Format kolom wajib: nis,nama,kelas — kolom jurusan opsional.
+    Format kolom wajib: nis,nama — `kelas_id` opsional (ID rombel dari menu
+    Kelas; kosong = belum ada rombel), `jurusan`/`konsentrasi_id` opsional.
+    Baris yang diawali `#` (komentar daftar kelas di template) diabaikan.
     NIS yang sudah ada akan DILEWATI (tidak menimpa), supaya aman
     dijalankan berulang kali untuk menambah data baru saja.
     """
     content = file.file.read().decode("utf-8-sig")
-    reader = csv.DictReader(io.StringIO(content))
+    baris_bersih = [ln for ln in content.splitlines() if not ln.lstrip().startswith("#")]
+    reader = csv.DictReader(io.StringIO("\n".join(baris_bersih)))
+
+    kelas_ids_valid = {row[0] for row in db.query(Kelas.id).all()}
 
     ditambahkan = dilewati = 0
     baris_error: list[str] = []
@@ -265,20 +320,27 @@ def import_siswa_csv(
     for i, row in enumerate(reader, start=2):  # baris 1 = header
         nis = (row.get("nis") or "").strip()
         nama = (row.get("nama") or "").strip()
-        kelas = (row.get("kelas") or "").strip()
+        kelas_id_raw = (row.get("kelas_id") or "").strip()
         jurusan = (row.get("jurusan") or "Teknik Elektronika").strip()
         konsentrasi_id_raw = (row.get("konsentrasi_id") or "").strip()
         konsentrasi_id = int(konsentrasi_id_raw) if konsentrasi_id_raw.isdigit() else None
 
-        if not nis or not nama or not kelas:
-            baris_error.append(f"Baris {i}: kolom nis/nama/kelas kosong")
+        if not nis or not nama:
+            baris_error.append(f"Baris {i}: kolom nis/nama kosong")
             continue
+
+        kelas_id = None
+        if kelas_id_raw:
+            if not kelas_id_raw.isdigit() or int(kelas_id_raw) not in kelas_ids_valid:
+                baris_error.append(f"Baris {i}: kelas_id '{kelas_id_raw}' tidak ada di daftar Kelas")
+                continue
+            kelas_id = int(kelas_id_raw)
 
         if db.query(Siswa).filter(Siswa.nis == nis).first():
             dilewati += 1
             continue
 
-        db.add(Siswa(nis=nis, nama=nama, kelas=kelas, jurusan=jurusan, konsentrasi_id=konsentrasi_id))
+        db.add(Siswa(nis=nis, nama=nama, kelas_id=kelas_id, jurusan=jurusan, konsentrasi_id=konsentrasi_id))
         ditambahkan += 1
 
     db.commit()
@@ -352,9 +414,11 @@ def enrollment_progress(
     # query ringkas per kelas untuk yang belum enroll
     from sqlalchemy import func
     belum_per_kelas = (
-        db.query(Siswa.kelas, func.count(Siswa.id))
+        db.query(Kelas.nama, func.count(Siswa.id))
+        .select_from(Siswa)
+        .outerjoin(Kelas, Kelas.id == Siswa.kelas_id)
         .filter(Siswa.aktif == True, Siswa.enrolled == False)
-        .group_by(Siswa.kelas)
+        .group_by(Kelas.nama)
         .all()
     )
 
@@ -363,7 +427,7 @@ def enrollment_progress(
         "sudah_enroll": sudah,
         "belum_enroll": total - sudah,
         "persentase": round((sudah / total * 100), 1) if total else 0,
-        "belum_enroll_per_kelas": {k: v for k, v in belum_per_kelas},
+        "belum_enroll_per_kelas": {(k or "(tanpa rombel)"): v for k, v in belum_per_kelas},
     }
 
 

@@ -327,6 +327,7 @@ Response:
       "nis": "22001",
       "nama": "Ahmad Fauzan",
       "kelas": "XI Elektronika",
+      "kelas_id": 4,
       "aktif": true,
       "embedding_encrypted": "gAAAAABm...(hex string)",
       "model_version": "minifasnet-v1",
@@ -335,6 +336,14 @@ Response:
   ]
 }
 ```
+
+> **Normalisasi kelas (migrasi 0012):** server kini menyimpan rombel di tabel
+> `kelas` (`siswa.kelas_id` FK). **Kontrak ke client TIDAK berubah** — field
+> `kelas` di sini & di `GET /siswa` tetap berisi **nama** kelas (di-compute dari
+> relasi). `kelas_id` ditambahkan sebagai info opsional; client boleh
+> mengabaikannya. `GET /jadwal/efektif?kelas=<nama>` & `POST /jadwal/override`
+> dengan body `{"kelas": "<nama>"}` tetap diterima (server resolve nama→id;
+> nama tak dikenal diperlakukan sebagai jadwal sekolah-wide, bukan error).
 
 **Cara pakai di client:**
 - Simpan `embedding_encrypted` (hex string) apa adanya ke SQLite lokal (kolom BLOB, decode dari hex dulu).
@@ -505,6 +514,10 @@ Response memberi jam masuk/pulang yang berlaku HARI INI (sudah menghitung overri
 {"sumber": "standar", "jam_masuk": "07:00:00", "jam_pulang": "15:00:00"}
 ```
 
+> Param `kelas` = **nama** rombel (tetap, walau server sudah normalisasi ke
+> `kelas_id` — lihat bagian 3). Nama yang tak dikenal server → fallback jadwal
+> sekolah-wide (bukan 404/500).
+
 Client harus:
 1. Tarik & cache jadwal ini secara berkala (idealnya tiap sync sukses), simpan ke SQLite lokal.
 2. Saat offline, pakai jadwal yang di-cache terakhir untuk menghitung `status_kehadiran_otomatis` (`TERLAMBAT` kalau jam_aktual > jam_masuk + toleransi, dst).
@@ -538,6 +551,9 @@ Content-Type: application/json
 
 - `tanggal`, `jam_masuk`, `jam_pulang` **wajib** untuk device.
 - `client_id` dipakai sebagai **idempotency key**: request ulang dengan `client_id` sama mengembalikan record yang sudah ada (HTTP 200) tanpa membuat baris baru — aman untuk retry tiap siklus sync.
+- `kelas` = **nama** rombel (opsional; kosong = berlaku semua kelas). Server
+  resolve ke `kelas_id`; nama tak dikenal diperlakukan sebagai berlaku semua
+  kelas. Dashboard boleh kirim `kelas_id` (int) langsung sebagai gantinya.
 - Validasi: `jam_masuk` harus `<` `jam_pulang` (400 kalau melanggar).
 
 Response (200 OK):
@@ -640,6 +656,35 @@ Authorization: Bearer <JWT admin atau guru_piket>
 ```
 
 Response: `{"status": "dibatalkan"}`
+
+---
+
+## 5c. Manajemen Kelas (Rombel) — dashboard
+
+Sejak migrasi `0012_kelas_normalisasi`, rombel adalah entitas nyata di tabel
+`kelas`. Endpoint ini dipakai dashboard web (menu **Kelas**). Kiosk **tidak
+perlu** memakainya — kontrak kiosk tetap berbasis nama kelas (lihat bagian 3).
+
+| Endpoint | Auth | Fungsi |
+|---|---|---|
+| `GET /kelas` | JWT guru **atau** device | Daftar kelas `[{id, nama, tingkat, konsentrasi_id, wali_id, wali_nama, aktif, jumlah_siswa}]` |
+| `POST /kelas` | admin | `{nama, tingkat?, konsentrasi_id?, wali_id?}` — 409 kalau `nama` sudah ada |
+| `PUT /kelas/{id}` | admin | partial update (nama/tingkat/konsentrasi_id/wali_id/aktif) |
+| `DELETE /kelas/{id}` | admin | **409** kalau masih ada siswa / jadwal yang mereferensikan |
+| `GET /kelas/{id}/siswa` | JWT guru **atau** device | siswa di kelas itu `[{id, nis, nama, enrolled}]` |
+
+**Perubahan endpoint existing:**
+- `POST /siswa` & `PUT /siswa/{id}`: field `kelas` (string) **diganti** `kelas_id`
+  (int, nullable). `SiswaOut` tetap punya `kelas` (nama) **plus** `kelas_id`.
+- **`PATCH /siswa/{id}`** (baru, admin) `{"kelas_id": <int|null>}` — pindah rombel
+  (drag-and-drop). 422 kalau `kelas_id` tidak ada.
+- `GET /siswa`: menerima `?kelas=<nama>` (kompat, di-resolve) **dan** `?kelas_id=<int>`
+  (`kelas_id=0` = siswa tanpa rombel).
+- Import CSV `POST /siswa/import`: kolom `kelas` → **`kelas_id`** (ID rombel; kosong =
+  tanpa rombel; ID tak dikenal → `baris_error`). Template `GET /siswa/template-csv`
+  menyertakan baris komentar `# kelas_id <n> = <nama>` (baris `#` diabaikan saat import).
+- `GET /guru`: field `kelas_diampu` **dihapus**, diganti `wali_kelas: [<nama>, ...]`
+  (read-only, di-derive dari `kelas.wali_id`). Penetapan wali lewat `PUT /kelas/{id}`.
 
 ---
 

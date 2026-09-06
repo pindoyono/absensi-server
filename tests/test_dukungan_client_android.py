@@ -66,12 +66,14 @@ def db_session(engine):
     s.add(models.Guru(id=1, nama="Bu Admin", email="admin@sekolah.sch.id", role="admin", aktif=True))
     s.add(models.Guru(id=2, nama="Pak Piket", email="piket@sekolah.sch.id", role="guru_piket", aktif=True))
     s.add(models.Guru(id=3, nama="Mantan", email="mantan@sekolah.sch.id", role="guru_piket", aktif=False))
-    s.add(models.Siswa(id=1, nis="12345", nama="Budi", kelas="XI", aktif=True))
+    s.add(models.Kelas(id=1, nama="XI"))
+    s.add(models.Kelas(id=2, nama="XII"))
+    s.add(models.Siswa(id=1, nis="12345", nama="Budi", kelas_id=1, aktif=True))
     # Hari sekolah SENIN..JUMAT; akhir pekan pakai SENIN supaya validasi jendela tetap jalan.
     hari = _hari_ini()
     if hari in ("SABTU", "MINGGU"):
         hari = "SENIN"
-    s.add(models.JadwalStandar(hari=hari, kelas="XI", jam_masuk=time(7, 0), jam_pulang=time(15, 0)))
+    s.add(models.JadwalStandar(hari=hari, kelas_id=1, jam_masuk=time(7, 0), jam_pulang=time(15, 0)))
     s.commit()
     yield s
     s.close()
@@ -207,8 +209,8 @@ def test_enroll_device_siswa_tidak_ada_404(client):
 
 def test_list_siswa_via_device_auth_roster_lengkap(client, db_session):
     # 3 siswa: 1 sudah enroll, 2 belum. Kiosk harus dapat ketiganya.
-    db_session.add(models.Siswa(id=2, nis="12346", nama="Ani", kelas="XI", aktif=True))
-    db_session.add(models.Siswa(id=3, nis="12347", nama="Cici", kelas="XII", aktif=True))
+    db_session.add(models.Siswa(id=2, nis="12346", nama="Ani", kelas_id=1, aktif=True))
+    db_session.add(models.Siswa(id=3, nis="12347", nama="Cici", kelas_id=2, aktif=True))
     db_session.query(models.Siswa).filter_by(id=1).update({"enrolled": True})
     db_session.commit()
 
@@ -224,7 +226,7 @@ def test_list_siswa_tanpa_auth_401(client):
 
 
 def test_list_siswa_hanya_siswa_aktif(client, db_session):
-    db_session.add(models.Siswa(id=2, nis="99999", nama="Alumni", kelas="XII", aktif=False))
+    db_session.add(models.Siswa(id=2, nis="99999", nama="Alumni", kelas_id=2, aktif=False))
     db_session.commit()
     r = client.get("/siswa", headers=DEV)
     assert r.status_code == 200
