@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
@@ -187,7 +187,7 @@ def register_device(
         # QR provisioning: kiosk bisa scan alih-alih menyalin manual.
         "claim": {
             "token": claim_token,
-            "expires_at": claim_expires.isoformat(),
+            "expires_at": claim_expires.replace(tzinfo=timezone.utc).isoformat(),
             "payload": device_claim.payload_qr(claim_token),
         },
     }
@@ -232,7 +232,7 @@ def claim_qr_device(
     return ClaimQrOut(
         device_id=device_id,
         token=token,
-        expires_at=expires,
+        expires_at=expires.replace(tzinfo=timezone.utc),  # UTC eksplisit untuk client
         payload=device_claim.payload_qr(token),
     )
 

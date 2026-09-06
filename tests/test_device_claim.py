@@ -109,3 +109,14 @@ def test_claim_token_kedaluwarsa_ditolak(client, db_session):
     db_session.commit()
     token = db_session.query(models.Device).filter_by(device_id="kiosk-1").one().claim_token
     assert client.post("/device/claim", json={"token": token}).status_code == 404
+
+
+def test_claim_token_expires_naive_utc_tetap_diterima(client, db_session):
+    """Regresi: Postgres menyimpan datetime sebagai UTC-naive. Token yang masih
+    30 menit lagi kedaluwarsa TIDAK boleh dianggap habis."""
+    from datetime import datetime, timedelta
+    d = db_session.query(models.Device).filter_by(device_id="kiosk-1").one()
+    d.claim_token = "tok-naive"
+    d.claim_token_expires = datetime.utcnow() + timedelta(minutes=30)  # naive, seperti PG
+    db_session.commit()
+    assert client.post("/device/claim", json={"token": "tok-naive"}).status_code == 200
