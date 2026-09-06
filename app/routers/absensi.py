@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, date as date_cls
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
@@ -240,6 +241,30 @@ def approve_absensi(
     db.commit()
 
     return {"status": "ok", "record_id": record_id}
+
+
+@router.delete("/{record_id}")
+def hapus_absensi(
+    record_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin")),
+):
+    """Hapus PERMANEN satu record absensi (koreksi kesalahan / bersihkan data
+    uji). Admin-only. Setelah dihapus, constraint UNIQUE(siswa_id, tanggal,
+    type) bebas lagi sehingga siswa bisa absen ulang untuk slot itu. Audit-log."""
+    row = db.query(Absensi).filter(Absensi.record_id == record_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Record absensi tidak ditemukan")
+
+    jejak = f"siswa_id={row.siswa_id} tanggal={row.tanggal} type={row.type} status={row.status_kehadiran_otomatis}"
+    db.delete(row)
+    db.commit()
+    print(
+        f"AUDIT absensi.hapus record_id={record_id} ({jejak}) "
+        f"oleh guru_id={guru.id} ({guru.email}) pada {datetime.utcnow().isoformat()}"
+    )
+    return {"status": "ok", "record_id": record_id}
+
 
 @router.get("/list")
 def list_absensi(

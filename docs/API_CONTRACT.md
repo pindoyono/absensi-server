@@ -384,7 +384,22 @@ Authorization: Bearer <JWT admin>
 
 Mengembalikan `aktif=True`. Kalau embedding-nya belum terlanjur dihapus permanen (masih dalam jeda 7 hari), siswa langsung bisa absen lagi setelah kiosk sync berikutnya (`embedding_tersedia: true`). Kalau sudah terlanjur dihapus, siswa perlu di-enroll ulang wajahnya (`embedding_tersedia: false`) — endpoint `POST /siswa/{id}/enroll` sekarang menerima lagi karena `aktif` sudah `True`.
 
-**Hapus PERMANEN** (bersihkan data uji — tidak bisa di-undo):
+**Hapus 1 record absensi** (koreksi kesalahan / bersihkan data uji):
+
+```
+DELETE /absensi/{record_id}
+Authorization: Bearer <JWT admin>          (admin-only; guru piket cuma bisa approve)
+
+→ { "status": "ok", "record_id": "..." }
+```
+
+Menghapus permanen. Setelah itu constraint `UNIQUE(siswa_id, tanggal, type)`
+bebas lagi → siswa bisa absen ulang untuk slot itu. `404` kalau record tak
+ada. Audit-log.
+
+---
+
+**Hapus PERMANEN siswa** (bersihkan data uji — tidak bisa di-undo):
 
 ```
 DELETE /siswa/{siswa_id}/hard

@@ -83,6 +83,7 @@ export default function AbsensiPage() {
 
     // Daftar kelas untuk dropdown filter
     const [kelasOptions, setKelasOptions] = useState<string[]>([]);
+    const [hapusId, setHapusId] = useState<string | null>(null);
 
     // Debounce pencarian
     useEffect(() => {
@@ -126,6 +127,31 @@ export default function AbsensiPage() {
             setLoading(false);
         }
     }, [cariDebounced, dariTanggal, sampaiTanggal, filterKelas, filterType, filterStatus, page]);
+
+    const handleHapus = async (a: Absensi) => {
+        if (!token) return;
+        const jenis = a.type === "MASUK" ? "Masuk" : "Pulang";
+        if (!window.confirm(
+            `Hapus absensi ${jenis} "${a.nama}" (${formatTanggal(a.tanggal)}, ${formatJam(a.jam_aktual)})?\n\n` +
+            `Permanen. Setelah dihapus, siswa bisa absen ulang untuk slot ini.`
+        )) return;
+        setHapusId(a.record_id);
+        setError(null);
+        try {
+            const res = await fetch(`${API_BASE}/absensi/${a.record_id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const body = await res.json().catch(() => null);
+            if (res.status === 403) throw new Error("Hanya admin yang boleh menghapus absensi.");
+            if (!res.ok) throw new Error(body?.detail ?? `HTTP ${res.status}`);
+            await loadAbsensi(token);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Gagal menghapus absensi");
+        } finally {
+            setHapusId(null);
+        }
+    };
 
     // Ambil daftar kelas unik dari endpoint siswa
     const loadKelas = useCallback(async (t: string) => {
@@ -339,6 +365,7 @@ export default function AbsensiPage() {
                                     </th>
                                     <th className="py-3 px-4 text-left">Catatan</th>
                                     <th className="py-3 px-4 text-left">Lokasi</th>
+                                    <th className="py-3 px-4 text-right">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -371,7 +398,19 @@ export default function AbsensiPage() {
                                             ) : (
                                                 <span className="text-xs text-slate-400">Normal</span>
                                             )}
-                                        </td>                                    </tr>
+                                        </td>
+                                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                                            <Button
+                                                variant="danger"
+                                                className="text-xs px-2 py-1"
+                                                isLoading={hapusId === a.record_id}
+                                                disabled={hapusId === a.record_id}
+                                                onClick={() => handleHapus(a)}
+                                            >
+                                                {hapusId === a.record_id ? "" : "Hapus"}
+                                            </Button>
+                                        </td>
+                                    </tr>
                                 ))}
                             </tbody>
                         </table>
