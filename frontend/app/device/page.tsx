@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
+import { QRCodeSVG } from "qrcode.react";
 import { Button, Badge, Skeleton } from "@/components/ui/Base";
 
 // Leaflet menyentuh `window` saat modul dievaluasi — harus dimuat client-only,
@@ -88,6 +89,9 @@ export default function DevicePage() {
     const [busyId, setBusyId] = useState<string | null>(null);
     const [regenResult, setRegenResult] = useState<{ device_id: string; api_key: string } | null>(null);
 
+    // QR provisioning (scan di kiosk alih-alih salin api_key manual)
+    const [qrData, setQrData] = useState<{ device_id: string; payload: string; expires_at: string } | null>(null);
+
     // Modal atur lokasi (geofencing)
     const [lokasiDevice, setLokasiDevice] = useState<Device | null>(null);
 
@@ -149,6 +153,7 @@ export default function DevicePage() {
         setForm({ ...emptyForm });
         setFormError(null);
         setRegResult(null);
+        setQrData(null);
         setCopied(false);
         setModalOpen(true);
     };
@@ -178,6 +183,9 @@ export default function DevicePage() {
             const body = await res.json().catch(() => null);
             if (!res.ok) throw new Error(body?.detail ?? `HTTP ${res.status}`);
             setRegResult({ device_id: body.device_id, api_key: body.api_key });
+            if (body.claim?.payload) {
+                setQrData({ device_id: body.device_id, payload: body.claim.payload, expires_at: body.claim.expires_at });
+            }
             await loadDevices(token);
         } catch (err) {
             setFormError(err instanceof Error ? err.message : "Gagal mendaftarkan device");
@@ -200,6 +208,25 @@ export default function DevicePage() {
             setRegenResult({ device_id: body.device_id, api_key: body.api_key });
         } catch (err) {
             setError(err instanceof Error ? err.message : "Gagal regenerate key");
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    const handleTampilkanQr = async (device_id: string) => {
+        if (!token) return;
+        setBusyId(device_id);
+        setError(null);
+        try {
+            const res = await fetch(`${API_BASE}/device/${device_id}/claim-qr`, {
+                method: "GET",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(body?.detail ?? `HTTP ${res.status}`);
+            setQrData({ device_id: body.device_id, payload: body.payload, expires_at: body.expires_at });
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Gagal membuat QR");
         } finally {
             setBusyId(null);
         }
@@ -441,6 +468,14 @@ export default function DevicePage() {
                                                     variant="secondary"
                                                     className="text-xs px-2 py-1"
                                                     disabled={busyId === d.device_id}
+                                                    onClick={() => handleTampilkanQr(d.device_id)}
+                                                >
+                                                    QR Setup
+                                                </Button>
+                                                <Button
+                                                    variant="secondary"
+                                                    className="text-xs px-2 py-1"
+                                                    disabled={busyId === d.device_id}
                                                     onClick={() => handleRegenerate(d.device_id)}
                                                 >
                                                     Regenerate Key
@@ -481,9 +516,24 @@ export default function DevicePage() {
 
                         {regResult ? (
                             <div className="space-y-4">
+                                {qrData && (
+                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                                        <p className="font-medium text-slate-700 text-sm mb-3">
+                                            Scan QR ini di app kiosk untuk isi otomatis:
+                                        </p>
+                                        <div className="flex justify-center">
+                                            <div className="bg-white p-3 rounded-lg border border-slate-200">
+                                                <QRCodeSVG value={qrData.payload} size={220} level="M" />
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-slate-500 mt-2">
+                                            Berlaku sampai <b>{formatWaktu(qrData.expires_at)}</b> · sekali-pakai
+                                        </p>
+                                    </div>
+                                )}
                                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                                     <p className="font-medium text-amber-800 text-sm mb-2">
-                                        API key (tampil SEKALI — simpan sekarang):
+                                        Atau salin manual — API key (tampil SEKALI):
                                     </p>
                                     <div className="flex items-center gap-2">
                                         <code className="flex-1 bg-white border border-amber-300 rounded px-3 py-2 text-xs font-mono break-all">
@@ -498,7 +548,7 @@ export default function DevicePage() {
                                     </p>
                                 </div>
                                 <div className="flex justify-end">
-                                    <Button onClick={() => setModalOpen(false)}>Selesai</Button>
+                                    <Button onClick={() => { setModalOpen(false); setQrData(null); }}>Selesai</Button>
                                 </div>
                             </div>
                         ) : (
@@ -568,6 +618,37 @@ export default function DevicePage() {
                     onClose={() => setLokasiDevice(null)}
                     onSave={handleSimpanLokasi}
                 />
+            )}
+
+            {/* Modal QR provisioning (dari tombol "QR Setup" di daftar device) */}
+            {qrData && !modalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 border border-slate-200">
+                        <h3 className="text-xl font-bold mb-1 text-slate-900">QR Setup Kiosk</h3>
+                        <p className="text-sm text-slate-500 mb-4">
+                            Device: <b>{qrData.device_id}</b>
+                        </p>
+                        <div className="flex justify-center rounded-lg border border-slate-200 bg-white p-4">
+                            <QRCodeSVG value={qrData.payload} size={240} level="M" />
+                        </div>
+                        <p className="text-xs text-slate-500 mt-3">
+                            Buka app kiosk (Android/Windows) → <b>Scan QR</b> untuk isi otomatis
+                            device ID + API key. Token sekali-pakai, berlaku sampai{" "}
+                            <b>{formatWaktu(qrData.expires_at)}</b>.
+                        </p>
+                        <div className="mt-5 flex justify-between">
+                            <Button
+                                variant="secondary"
+                                className="text-xs px-3 py-1.5"
+                                disabled={busyId === qrData.device_id}
+                                onClick={() => handleTampilkanQr(qrData.device_id)}
+                            >
+                                QR Baru
+                            </Button>
+                            <Button onClick={() => setQrData(null)}>Selesai</Button>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* Modal hasil regenerate key */}
