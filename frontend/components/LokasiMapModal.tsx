@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from "react-leaflet";
+import { useEffect, useRef, useState } from "react";
+import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/Base";
@@ -37,6 +37,28 @@ function KlikUntukPin({ onPick }: { onPick: (lat: number, lng: number) => void }
     return null;
 }
 
+// Menggeser view peta ke koordinat hasil pencarian. `nonce` dinaikkan tiap
+// pencarian supaya mencari koordinat yang sama dua kali tetap memindahkan peta.
+function PindahKeHasilCari({ target }: { target: { pos: [number, number]; nonce: number } | null }) {
+    const map = useMap();
+    useEffect(() => {
+        if (target) map.setView(target.pos, Math.max(map.getZoom(), 18), { animate: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [target?.nonce]);
+    return null;
+}
+
+/** Ambil dua angka pertama dari teks (mendukung "lat,lng", "lat, lng", atau tempelan Google Maps). */
+function parseKoordinat(teks: string): [number, number] | null {
+    const m = teks.match(/(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)/);
+    if (!m) return null;
+    const lat = parseFloat(m[1]);
+    const lng = parseFloat(m[2]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return [lat, lng];
+}
+
 export default function LokasiMapModal({
     deviceId,
     initialLat,
@@ -51,6 +73,20 @@ export default function LokasiMapModal({
     const [radius, setRadius] = useState<number>(initialRadius ?? 100);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [cari, setCari] = useState("");
+    const [flyKe, setFlyKe] = useState<{ pos: [number, number]; nonce: number } | null>(null);
+    const nonceRef = useRef(0);
+
+    const handleCari = () => {
+        const koord = parseKoordinat(cari);
+        if (!koord) {
+            setError("Format koordinat tidak dikenali. Contoh: 3.5748899, 116.6299207");
+            return;
+        }
+        setError(null);
+        setPosisi(koord);
+        setFlyKe({ pos: koord, nonce: ++nonceRef.current });
+    };
 
     const handleSave = async () => {
         if (!posisi) {
@@ -87,6 +123,18 @@ export default function LokasiMapModal({
                     </div>
                 )}
 
+                <div className="flex gap-2 mb-3">
+                    <input
+                        type="text"
+                        value={cari}
+                        onChange={(e) => setCari(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCari(); } }}
+                        placeholder="Cari koordinat — contoh: 3.5748899, 116.6299207"
+                        className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <Button variant="secondary" onClick={handleCari}>Cari</Button>
+                </div>
+
                 <div className="h-80 w-full rounded-lg overflow-hidden border border-slate-200 mb-4 relative">
                     <button
                         type="button"
@@ -115,6 +163,7 @@ export default function LokasiMapModal({
                             url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                         />
                         <KlikUntukPin onPick={(lat, lng) => setPosisi([lat, lng])} />
+                        <PindahKeHasilCari target={flyKe} />
                         {posisi && (
                             <>
                                 <Marker
