@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, status, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import Guru, Device, Siswa
+from app.services.waktu import utcnow
 
 bearer_scheme = HTTPBearer()
 
@@ -59,7 +60,7 @@ def issue_internal_jwt(guru: Guru) -> str:
         # sub="3" bisa salah tertukar dibaca sebagai guru id=3 kalau baris itu
         # kebetulan ada (lihat get_current_siswa di bawah).
         "tipe": "guru",
-        "exp": datetime.utcnow() + timedelta(minutes=settings.jwt_expire_minutes),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
@@ -73,7 +74,7 @@ def issue_siswa_jwt(siswa: Siswa) -> str:
         "email": siswa.email,
         "role": "siswa",
         "tipe": "siswa",
-        "exp": datetime.utcnow() + timedelta(minutes=settings.jwt_expire_minutes),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
@@ -160,7 +161,9 @@ def get_guru_or_device(
     if x_device_api_key and x_device_id:
         device = db.query(Device).filter(Device.device_id == x_device_id, Device.aktif == True).first()
         if device and verify_api_key(x_device_api_key, device.api_key_hash):
-            device.last_seen_at = datetime.utcnow()
+            device.last_seen_at = utcnow()
+            if device.raw_api_key is not None:
+                device.raw_api_key = None  # device sudah pegang key-nya; jangan simpan plaintext
             return device
     
     # Fallback ke JWT guru (untuk dashboard web) -- token siswa ditolak

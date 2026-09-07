@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import Absensi, Siswa, Guru, JadwalOverride, Kelas
@@ -50,7 +50,7 @@ def rekap_kehadiran(
     kehadiran" di dashboard. Wali kelas otomatis dibatasi ke kelas yang
     diampu saja (role-based, bukan cuma UI-level filtering).
     """
-    q = db.query(Siswa).filter(Siswa.aktif == True)
+    q = db.query(Siswa).options(joinedload(Siswa.kelas_rel)).filter(Siswa.aktif == True)
     if guru.role == "wali_kelas":
         wali_kelas_ids = [k.id for k in db.query(Kelas.id).filter(Kelas.wali_id == guru.id).all()]
         q = q.filter(Siswa.kelas_id.in_(wali_kelas_ids or [-1]))

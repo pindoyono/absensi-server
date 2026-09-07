@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import FaceEmbedding, Siswa
+from app.services.waktu import utcnow
 
 router = APIRouter(prefix="/admin/retensi", tags=["retensi"])
 
@@ -54,7 +55,7 @@ def bersihkan_wajah_kedaluwarsa(
     """
     _verifikasi_secret(x_retensi_secret)
 
-    sekarang = datetime.utcnow()
+    sekarang = utcnow()
     batas_umur = sekarang - timedelta(days=BATAS_UMUR_HARI)
     batas_jeda = sekarang - timedelta(days=JEDA_HAPUS_PERMANEN_HARI)
 

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import JadwalStandar, JadwalOverride, Guru, Device, Kelas
 from app.auth import require_role, get_current_guru, get_guru_or_device
-from app.services.waktu import hari_ini
+from app.services.waktu import hari_ini, utcnow
 
 router = APIRouter(prefix="/jadwal", tags=["jadwal"])
 
@@ -63,23 +63,31 @@ def _resolve_kelas_id(db: Session, nama: Optional[str]) -> Optional[int]:
     return db.query(Kelas.id).filter(Kelas.nama == nama).scalar()
 
 
-def _serialize_standar(db: Session, row: JadwalStandar) -> dict:
+def _peta_nama_kelas(db: Session) -> dict[int, str]:
+    """Semua kelas → {id: nama} dalam satu query (untuk serialisasi banyak baris
+    tanpa N+1)."""
+    return {kid: nama for kid, nama in db.query(Kelas.id, Kelas.nama).all()}
+
+
+def _serialize_standar(db: Session, row: JadwalStandar, nama_kelas: dict[int, str] | None = None) -> dict:
+    nama = nama_kelas.get(row.kelas_id) if (nama_kelas is not None and row.kelas_id) else _kelas_nama(db, row.kelas_id)
     return {
         "id": row.id,
         "hari": row.hari,
         "kelas_id": row.kelas_id,
-        "kelas": _kelas_nama(db, row.kelas_id),
+        "kelas": nama,
         "jam_masuk": row.jam_masuk,
         "jam_pulang": row.jam_pulang,
     }
 
 
-def _serialize_override(db: Session, row: JadwalOverride) -> dict:
+def _serialize_override(db: Session, row: JadwalOverride, nama_kelas: dict[int, str] | None = None) -> dict:
+    nama = nama_kelas.get(row.kelas_id) if (nama_kelas is not None and row.kelas_id) else _kelas_nama(db, row.kelas_id)
     return {
         "id": row.id,
         "tanggal": row.tanggal,
         "kelas_id": row.kelas_id,
-        "kelas": _kelas_nama(db, row.kelas_id),
+        "kelas": nama,
         "jam_masuk": row.jam_masuk,
         "jam_pulang": row.jam_pulang,
         "alasan": row.alasan,
@@ -94,7 +102,8 @@ def _serialize_override(db: Session, row: JadwalOverride) -> dict:
 @router.get("/standar")
 def list_jadwal_standar(db: Session = Depends(get_db), guru: Guru = Depends(get_current_guru)):
     rows = db.query(JadwalStandar).order_by(JadwalStandar.hari).all()
-    return [_serialize_standar(db, r) for r in rows]
+    nama_kelas = _peta_nama_kelas(db)
+    return [_serialize_standar(db, r, nama_kelas) for r in rows]
 
 
 @router.post("/standar")
@@ -135,8 +144,13 @@ def delete_jadwal_standar(
     row = db.query(JadwalStandar).filter(JadwalStandar.id == standar_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Jadwal standar tidak ditemukan")
+    jejak = f"hari={row.hari} kelas_id={row.kelas_id} {row.jam_masuk}-{row.jam_pulang}"
     db.delete(row)
     db.commit()
+    print(
+        f"AUDIT jadwal.standar.hapus id={standar_id} ({jejak}) "
+        f"oleh guru_id={guru.id} ({guru.email}) pada {utcnow().isoformat()}"
+    )
     return {"status": "ok"}
 
 
@@ -150,7 +164,8 @@ def list_jadwal_override(
     if dari_tanggal:
         q = q.filter(JadwalOverride.tanggal >= dari_tanggal)
     rows = q.order_by(JadwalOverride.tanggal.desc()).all()
-    return [_serialize_override(db, r) for r in rows]
+    nama_kelas = _peta_nama_kelas(db)
+    return [_serialize_override(db, r, nama_kelas) for r in rows]
 
 
 @router.post("/override")

@@ -1,7 +1,28 @@
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings
 from app.routers import login, absensi, siswa, jadwal, laporan, device, embeddings, guru, dispensasi, spektrum, retensi, kelas
+
+log = logging.getLogger("app.startup")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # Guard kesiapan produksi: jangan biarkan server jalan dengan secret
+    # placeholder yang di-commit di repo (JWT bisa dipalsukan siapa saja,
+    # embedding wajah terenkripsi dengan kunci publik).
+    masalah = settings.secret_placeholder_errors()
+    if masalah:
+        pesan = "Konfigurasi keamanan belum lengkap:\n  - " + "\n  - ".join(masalah)
+        if settings.is_production:
+            raise RuntimeError(pesan + "\n\nSet nilainya di .env sebelum deploy (APP_ENV=production).")
+        log.warning("%s\n(APP_ENV bukan production — server tetap jalan untuk dev.)", pesan)
+    yield
+
 
 app = FastAPI(
     title="API Absensi Face Recognition",
@@ -10,6 +31,7 @@ app = FastAPI(
         "Lihat docs/API_CONTRACT.md untuk panduan integrasi client Windows/Android."
     ),
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

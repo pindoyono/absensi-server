@@ -8,7 +8,7 @@ Kebijakan (lihat app/routers/retensi.py):
    permanen (fase 2). Baris `siswa` tidak disentuh.
 3. Endpoint menolak tanpa X-Retensi-Secret yang benar.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -93,18 +93,18 @@ def test_tolak_kalau_secret_belum_dikonfigurasi(client):
 
 
 def test_embedding_belum_kedaluwarsa_tidak_disentuh(client, db_session):
-    _seed(db_session, siswa_id=1, nis="22001", dibuat_pada=datetime.utcnow() - timedelta(days=30))
+    _seed(db_session, siswa_id=1, nis="22001", dibuat_pada=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30))
     r = client.post("/admin/retensi/bersihkan-wajah", headers=HEADERS_OK)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["dinonaktifkan"] == 0
     assert body["dihapus_permanen"] == 0
-    row = db_session.query(models.Siswa).get(1)
+    row = db_session.get(models.Siswa, 1)
     assert row.aktif is True
 
 
 def test_fase1_nonaktifkan_siswa_aktif_yang_kedaluwarsa(client, db_session):
-    tua = datetime.utcnow() - timedelta(days=365 * 3 + 60)  # lewat 3th1bln
+    tua = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=365 * 3 + 60)  # lewat 3th1bln
     _seed(db_session, siswa_id=1, nis="22001", dibuat_pada=tua, aktif=True)
 
     r = client.post("/admin/retensi/bersihkan-wajah", headers=HEADERS_OK)
@@ -113,15 +113,15 @@ def test_fase1_nonaktifkan_siswa_aktif_yang_kedaluwarsa(client, db_session):
     assert body["dinonaktifkan"] == 1
     assert body["dihapus_permanen"] == 0  # baru dinonaktifkan, belum lewat jeda 7 hari
 
-    siswa = db_session.query(models.Siswa).get(1)
+    siswa = db_session.get(models.Siswa, 1)
     emb = db_session.query(models.FaceEmbedding).filter_by(siswa_id=1).first()
     assert siswa.aktif is False
     assert emb is not None  # embedding masih ada — belum dihapus permanen
 
 
 def test_fase2_hapus_permanen_setelah_lewat_jeda_propagasi(client, db_session):
-    tua = datetime.utcnow() - timedelta(days=365 * 3 + 60)
-    lewat_jeda = datetime.utcnow() - timedelta(days=8)
+    tua = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=365 * 3 + 60)
+    lewat_jeda = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=8)
     _seed(db_session, siswa_id=1, nis="22001", dibuat_pada=tua, diperbarui_pada=lewat_jeda, aktif=False)
 
     r = client.post("/admin/retensi/bersihkan-wajah", headers=HEADERS_OK)
@@ -133,12 +133,12 @@ def test_fase2_hapus_permanen_setelah_lewat_jeda_propagasi(client, db_session):
 
     assert db_session.query(models.FaceEmbedding).filter_by(siswa_id=1).first() is None
     # baris siswa TIDAK dihapus — riwayat absensi tetap utuh
-    assert db_session.query(models.Siswa).get(1) is not None
+    assert db_session.get(models.Siswa, 1) is not None
 
 
 def test_siswa_nonaktif_kedaluwarsa_tapi_belum_lewat_jeda_belum_dihapus(client, db_session):
-    tua = datetime.utcnow() - timedelta(days=365 * 3 + 60)
-    baru_saja = datetime.utcnow() - timedelta(days=1)
+    tua = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=365 * 3 + 60)
+    baru_saja = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
     _seed(db_session, siswa_id=1, nis="22001", dibuat_pada=tua, diperbarui_pada=baru_saja, aktif=False)
 
     r = client.post("/admin/retensi/bersihkan-wajah", headers=HEADERS_OK)
@@ -148,7 +148,7 @@ def test_siswa_nonaktif_kedaluwarsa_tapi_belum_lewat_jeda_belum_dihapus(client, 
 
 
 def test_idempotent_dijalankan_berulang(client, db_session):
-    tua = datetime.utcnow() - timedelta(days=365 * 3 + 60)
+    tua = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=365 * 3 + 60)
     _seed(db_session, siswa_id=1, nis="22001", dibuat_pada=tua, aktif=True)
 
     r1 = client.post("/admin/retensi/bersihkan-wajah", headers=HEADERS_OK)

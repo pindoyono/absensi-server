@@ -1,12 +1,13 @@
-from datetime import datetime
 from typing import Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import Siswa, FaceEmbedding, Device
 from app.services.device_auth import verify_api_key
+from app.services.waktu import utcnow
 
 router = APIRouter(prefix="/embeddings", tags=["embeddings"])
 
@@ -42,6 +43,7 @@ def sync_embeddings(
     q = (
         db.query(Siswa, FaceEmbedding)
         .join(FaceEmbedding, FaceEmbedding.siswa_id == Siswa.id)
+        .options(joinedload(Siswa.kelas_rel))  # hindari N+1 saat baca siswa.kelas
     )
     if diperbarui_sejak:
         q = q.filter(FaceEmbedding.diperbarui_pada > diperbarui_sejak)
@@ -61,7 +63,7 @@ def sync_embeddings(
         })
 
     return {
-        "server_time": datetime.utcnow(),
+        "server_time": utcnow(),
         "jumlah": len(hasil),
         "data": hasil,
     }

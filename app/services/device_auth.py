@@ -10,12 +10,12 @@ bisa memakai `verify_device` tanpa circular import (device_auth tidak
 mengimpor apa pun dari app.routers.*).
 """
 import hashlib
-from datetime import datetime
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import Device
+from app.services.waktu import utcnow
 
 
 def hash_api_key(raw_key: str) -> str:
@@ -44,5 +44,9 @@ def verify_device(db: Session, device_id: str, x_device_api_key: str | None) -> 
     if not x_device_api_key or not verify_api_key(x_device_api_key, device.api_key_hash):
         raise HTTPException(status_code=401, detail="API key device tidak valid")
 
-    device.last_seen_at = datetime.utcnow()
+    device.last_seen_at = utcnow()
+    # Device sudah membuktikan memegang api_key → server tak perlu lagi simpan
+    # salinan plaintext-nya. Kalau admin butuh key lagi: POST /device/{id}/regenerate-key.
+    if device.raw_api_key is not None:
+        device.raw_api_key = None
     return device

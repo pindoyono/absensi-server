@@ -5,14 +5,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import Response
-from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy.orm import Session
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import Siswa, FaceEmbedding, Guru, Device, KonsentrasiKeahlian, Absensi, Dispensasi, Kelas
 from app.auth import require_role, get_current_guru, get_guru_or_device, get_current_siswa
 from app.services.crypto import encrypt_embedding
-from app.services.waktu import hari_ini
+from app.services.waktu import hari_ini, utcnow
 
 router = APIRouter(prefix="/siswa", tags=["siswa"])
 
@@ -43,8 +43,7 @@ class SiswaOut(BaseModel):
     tanggal_enrollment: Optional[date] = None
     email: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SiswaPindahKelasIn(BaseModel):
@@ -90,7 +89,12 @@ def list_siswa(
     siswa yang BELUM enroll di layar Enrollment. `GET /embeddings/sync` hanya
     mengirim siswa yang sudah punya embedding, jadi tidak cukup untuk itu.
     """
-    q = db.query(Siswa).outerjoin(Kelas, Kelas.id == Siswa.kelas_id).filter(Siswa.aktif == True)
+    q = (
+        db.query(Siswa)
+        .options(joinedload(Siswa.kelas_rel))  # hindari N+1 saat SiswaOut baca .kelas
+        .outerjoin(Kelas, Kelas.id == Siswa.kelas_id)
+        .filter(Siswa.aktif == True)
+    )
     # Kompat: kiosk & filter lama kirim `kelas` = NAMA. Resolve ke id.
     if kelas:
         target = db.query(Kelas.id).filter(Kelas.nama == kelas).scalar()
@@ -102,7 +106,7 @@ def list_siswa(
         q = q.filter(Siswa.kelas_id.is_(None)) if kelas_id == 0 else q.filter(Siswa.kelas_id == kelas_id)
     if enrolled is not None:
         q = q.filter(Siswa.enrolled == enrolled)
-    return q.order_by(Kelas.nama.nullsfirst(), Siswa.nama).all()
+    return q.order_by(Kelas.nama.nulls_first(), Siswa.nama).all()
 
 
 @router.post("", response_model=SiswaOut)
@@ -184,7 +188,7 @@ def deactivate_siswa(
     # sync berikutnya — tanpa ini, penonaktifan tidak pernah terkirim.
     emb = db.query(FaceEmbedding).filter(FaceEmbedding.siswa_id == siswa_id).first()
     if emb:
-        emb.diperbarui_pada = datetime.utcnow()
+        emb.diperbarui_pada = utcnow()
     db.commit()
     return {"status": "ok", "siswa_id": siswa_id, "aktif": False}
 
@@ -211,7 +215,7 @@ def hard_delete_siswa(
     print(
         f"AUDIT siswa.hard_delete siswa_id={siswa_id} nis={row.nis} "
         f"(absensi={n_absensi}, dispensasi={n_dispensasi}, embedding={n_embedding}) "
-        f"oleh guru_id={guru.id} ({guru.email}) pada {datetime.utcnow().isoformat()}"
+        f"oleh guru_id={guru.id} ({guru.email}) pada {utcnow().isoformat()}"
     )
     return {
         "status": "ok",
@@ -253,7 +257,7 @@ def aktifkan_siswa(
     if emb:
         # Bump supaya client yang sync incremental (diperbarui_sejak) tetap
         # menerima status aktif=true ini pada siklus sync berikutnya.
-        emb.diperbarui_pada = datetime.utcnow()
+        emb.diperbarui_pada = utcnow()
     db.commit()
     return {"status": "ok", "siswa_id": siswa_id, "aktif": True, "embedding_tersedia": emb is not None}
 
@@ -450,8 +454,7 @@ class AbsensiSayaOut(BaseModel):
     status_kehadiran_final: Optional[str] = None
     catatan: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("/saya/absensi", response_model=list[AbsensiSayaOut])

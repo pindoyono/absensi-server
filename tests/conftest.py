@@ -5,6 +5,16 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base
 from app import models  # noqa: F401 — memastikan semua model ter-register ke Base
+from app.services.rate_limit import _reset_untuk_test
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limit():
+    """Rate limiter berbasis memori proses — reset antar test supaya test yang
+    memanggil /auth/login/google atau /device/claim berkali-kali tidak saling
+    mengganggu (semua TestClient berbagi IP yang sama)."""
+    _reset_untuk_test()
+    yield
 
 
 def buat_kelas(db, nama="XI TE 1", **kw) -> models.Kelas:

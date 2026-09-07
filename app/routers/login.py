@@ -10,6 +10,7 @@ from app.models import Device, Guru, Siswa
 from app.schemas import GoogleLoginRequest, LoginResponse
 from app.auth import verify_google_id_token, issue_internal_jwt, issue_siswa_jwt, get_current_guru, decode_token
 from app.services.device_auth import verify_api_key
+from app.services.rate_limit import batasi
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -37,7 +38,7 @@ def read_me(
     return {"id": guru.id, "nama": guru.nama, "email": guru.email, "role": guru.role}
 
 
-@router.post("/login/google", response_model=LoginResponse)
+@router.post("/login/google", response_model=LoginResponse, dependencies=[batasi("login", 20, 60)])
 def login_google(body: GoogleLoginRequest, db: Session = Depends(get_db)):
     """
     Dipanggil dashboard web / client kiosk setelah user berhasil login lewat

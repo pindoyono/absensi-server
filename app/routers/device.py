@@ -2,7 +2,7 @@ import secrets
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Header
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -11,6 +11,8 @@ from app.models import Device, Guru
 from app.auth import require_role, get_current_guru
 from app.services.device_auth import verify_device, hash_api_key, verify_api_key
 from app.services.geo import jarak_meter
+from app.services.rate_limit import batasi
+from app.services.waktu import utcnow
 from app.services import device_claim
 
 router = APIRouter(prefix="/device", tags=["device"])
@@ -49,8 +51,8 @@ class DeviceOut(BaseModel):
     lokasi_alasan_terakhir: str | None = None
     lokasi_dicek_pada: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class DeviceHealthIn(BaseModel):
     jadwal_jam_lalu: float | None = None
@@ -184,7 +186,7 @@ def register_device(
     # enkripsi embedding: audit-log tiap panggilan.
     print(
         f"AUDIT device.register device_id={device_id} oleh guru_id={guru.id} "
-        f"({guru.email}) pada {datetime.utcnow().isoformat()}"
+        f"({guru.email}) pada {utcnow().isoformat()}"
     )
     return {
         "device_id": device_id,
@@ -245,7 +247,7 @@ def update_device(
     db.refresh(device)
     print(
         f"AUDIT device.update device_id={device_id} oleh guru_id={guru.id} "
-        f"({guru.email}) pada {datetime.utcnow().isoformat()}"
+        f"({guru.email}) pada {utcnow().isoformat()}"
     )
     return device
 
@@ -267,7 +269,7 @@ def claim_qr_device(
     db.commit()
     print(
         f"AUDIT device.claim_qr device_id={device_id} oleh guru_id={guru.id} "
-        f"({guru.email}) pada {datetime.utcnow().isoformat()}"
+        f"({guru.email}) pada {utcnow().isoformat()}"
     )
     return ClaimQrOut(
         device_id=device_id,
@@ -277,11 +279,12 @@ def claim_qr_device(
     )
 
 
-@router.post("/claim", response_model=ClaimOut)
+@router.post("/claim", response_model=ClaimOut, dependencies=[batasi("device_claim", 20, 60)])
 def claim_device(body: ClaimIn, db: Session = Depends(get_db)):
     """Tukar token QR (sekali-pakai) jadi kredensial device. TANPA auth —
     token acak 256-bit itu sendiri yang jadi bukti. Token langsung hangus
-    setelah berhasil ditukar."""
+    setelah berhasil ditukar. Rate-limited (anti brute-force meski token
+    256-bit praktis tak bisa ditebak)."""
     token = (body.token or "").strip()
     if not token:
         raise HTTPException(status_code=400, detail="token kosong")
@@ -290,17 +293,21 @@ def claim_device(body: ClaimIn, db: Session = Depends(get_db)):
     if not device or not device_claim.token_masih_berlaku(device):
         raise HTTPException(status_code=404, detail="Token tidak valid atau sudah kedaluwarsa")
 
+    api_key = device.raw_api_key
     device.claim_token = None
     device.claim_token_expires = None
+    # Kiosk sekarang menyimpan api_key-nya sendiri — server tak perlu lagi
+    # menyimpan salinan plaintext. Kalau admin butuh key lagi: regenerate-key.
+    device.raw_api_key = None
     db.commit()
     print(
-        f"AUDIT device.claim device_id={device.device_id} pada {datetime.utcnow().isoformat()}"
+        f"AUDIT device.claim device_id={device.device_id} pada {utcnow().isoformat()}"
     )
     return ClaimOut(
         server=settings.public_base_url.rstrip("/"),
         device_id=device.device_id,
         nama_lokasi=device.nama_lokasi,
-        api_key=device.raw_api_key,
+        api_key=api_key,
         face_encryption_key=settings.face_encryption_key,
     )
 
@@ -400,7 +407,7 @@ def cek_lokasi_device(
     hasil.dikonfigurasi = dikonfigurasi
     device.lokasi_valid_terakhir = hasil.valid
     device.lokasi_alasan_terakhir = hasil.alasan
-    device.lokasi_dicek_pada = datetime.utcnow()
+    device.lokasi_dicek_pada = utcnow()
     db.commit()
     return hasil
 
@@ -457,7 +464,7 @@ def report_device_health(
     device = verify_device(db, device_id, x_device_api_key)
     device.jadwal_jam_lalu = body.jadwal_jam_lalu
     device.dispensasi_jam_lalu = body.dispensasi_jam_lalu
-    device.health_dilaporkan_pada = datetime.utcnow()
+    device.health_dilaporkan_pada = utcnow()
     db.commit()
     # nama_lokasi + platform dikembalikan supaya kiosk bisa menyegarkan
     # metadata lokalnya tiap siklus sync (admin bisa ubah lewat PATCH /device/{id}).

@@ -155,7 +155,7 @@ def test_device_health_tanpa_auth_401(client):
 
 def test_register_membalikkan_face_encryption_key(client, db_session):
     from app.auth import issue_internal_jwt
-    token = issue_internal_jwt(db_session.query(models.Guru).get(1))
+    token = issue_internal_jwt(db_session.get(models.Guru, 1))
     r = client.post("/device/register",
                     headers={"Authorization": f"Bearer {token}"},
                     json={"device_id": "kiosk-baru", "nama_lokasi": "Aula", "platform": "android"})
@@ -192,7 +192,7 @@ def test_enroll_via_device_auth(client, db_session):
                     json={"embedding": emb, "model_version": "arcface-android-v1"})
     assert r.status_code == 200, r.text
     assert r.json()["sumber"] == "device"
-    s = db_session.query(models.Siswa).get(1)
+    s = db_session.get(models.Siswa, 1)
     assert s.enrolled is True
     assert s.enrolled_device_id == "kiosk01"
     assert s.enrolled_oleh is None
@@ -237,7 +237,7 @@ def test_list_siswa_hanya_siswa_aktif(client, db_session):
 
 def _piket_headers(db_session):
     from app.auth import issue_internal_jwt
-    return {"Authorization": f"Bearer {issue_internal_jwt(db_session.query(models.Guru).get(2))}"}
+    return {"Authorization": f"Bearer {issue_internal_jwt(db_session.get(models.Guru, 2))}"}
 
 
 def test_sync_lokasi_mock_tetap_disimpan_tidak_ditolak(client, db_session):

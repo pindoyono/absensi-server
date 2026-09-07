@@ -9,7 +9,7 @@ Acceptance criteria PRD:
 4. DELETE /siswa/{id} (soft delete) menonaktifkan siswa sehingga
    client kiosk bisa menghapus cache lokalnya.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -125,7 +125,7 @@ def test_sync_diperbarui_sejak(client, db_session):
 
     # semua embedding baru dibuat "sekarang" → sync dengan cutoff masa lalu
     # harus mengembalikan keduanya
-    cutoff = datetime.utcnow() - timedelta(hours=1)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
     r = client.get("/embeddings/sync", headers={**DEVICE_HEADERS,
                    "X-Device-Api-Key": "kunci-device-test-123"},
                    params={"diperbarui_sejak": cutoff.isoformat()})
@@ -134,7 +134,7 @@ def test_sync_diperbarui_sejak(client, db_session):
 
     # cutoff di masa depan → tidak ada yang berubah sejak itu
     r = client.get("/embeddings/sync", headers=DEVICE_HEADERS,
-                   params={"diperbarui_sejak": (datetime.utcnow() + timedelta(hours=1)).isoformat()})
+                   params={"diperbarui_sejak": (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)).isoformat()})
     assert r.status_code == 200
     assert r.json()["jumlah"] == 0
 

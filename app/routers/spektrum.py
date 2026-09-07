@@ -1,7 +1,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -21,8 +21,7 @@ class BidangOut(BaseModel):
     id: int
     nama: str
     kode: str
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ProgramIn(BaseModel):
     bidang_id: int
@@ -34,8 +33,7 @@ class ProgramOut(BaseModel):
     bidang_id: int
     nama: str
     kode: str
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class KonsentrasiIn(BaseModel):
     program_id: int
@@ -49,8 +47,7 @@ class KonsentrasiOut(BaseModel):
     nama: str
     kode: str
     durasi_tahun: int
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class KonsentrasiDetailOut(KonsentrasiOut):
     program_nama: Optional[str] = None

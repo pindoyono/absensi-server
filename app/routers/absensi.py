@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, date as date_cls
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy import select, or_, and_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import Absensi, Device, Dispensasi, JadwalStandar, JadwalOverride, Siswa, Kelas
@@ -15,7 +15,7 @@ from app.schemas import (
 from app.auth import get_current_guru, require_role
 from app.models import Guru
 from app.services.device_auth import verify_device
-from app.services.waktu import hari_ini
+from app.services.waktu import hari_ini, utcnow
 
 router = APIRouter(prefix="/absensi", tags=["absensi"])
 
@@ -114,8 +114,16 @@ def sync_absensi(
     hasil: list[SyncResultItem] = []
     disimpan = duplikat = gagal = 0
 
+    # Verifikasi device sekali per device_id (bukan per-record): satu batch
+    # umumnya dari satu kiosk. Kalau key salah, verify_device raise 401 dan
+    # seluruh request gagal — sama seperti perilaku lama.
+    device_terverifikasi: dict[str, Device] = {}
+    # Cache kelas_id per siswa supaya tidak query berulang dalam loop.
+    kelas_id_cache: dict[int, int | None] = {}
+
     for rec in body.records:
-        verify_device(db, rec.device_id, x_device_api_key)
+        if rec.device_id not in device_terverifikasi:
+            device_terverifikasi[rec.device_id] = verify_device(db, rec.device_id, x_device_api_key)
 
         # Savepoint per-record: kalau 1 record gagal, tidak menggagalkan
         # seluruh batch — record lain dalam batch tetap diproses.
@@ -140,8 +148,9 @@ def sync_absensi(
             # PENTING: ambil kelas siswa yang SEBENARNYA -- jadwal bisa
             # berbeda per kelas (lihat JadwalStandar/JadwalOverride yang
             # punya kolom `kelas`), jangan selalu pakai jadwal sekolah-wide.
-            kelas_id_siswa = db.query(Siswa.kelas_id).filter(Siswa.id == rec.siswa_id).scalar()
-            jadwal_efektif = _ambil_jadwal_efektif(db, kelas_id_siswa, rec.tanggal)
+            if rec.siswa_id not in kelas_id_cache:
+                kelas_id_cache[rec.siswa_id] = db.query(Siswa.kelas_id).filter(Siswa.id == rec.siswa_id).scalar()
+            jadwal_efektif = _ambil_jadwal_efektif(db, kelas_id_cache[rec.siswa_id], rec.tanggal)
             if jadwal_efektif:
                 penolakan = _validasi_jendela_waktu(db, rec, jadwal_efektif)
                 if penolakan:
@@ -228,8 +237,6 @@ def approve_absensi(
 ):
     """Guru piket meng-approve/mengubah status final absensi (lihat 8.2 di
     dokumen arsitektur — status otomatis tetap sementara sampai diverifikasi)."""
-    from datetime import datetime
-
     row = db.query(Absensi).filter(Absensi.record_id == record_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Record absensi tidak ditemukan")
@@ -237,7 +244,7 @@ def approve_absensi(
     row.status_kehadiran_final = body.status_kehadiran_final
     row.catatan = body.catatan or row.catatan
     row.approved_by = guru.id
-    row.approved_at = datetime.utcnow()
+    row.approved_at = utcnow()
     db.commit()
 
     return {"status": "ok", "record_id": record_id}
@@ -261,7 +268,7 @@ def hapus_absensi(
     db.commit()
     print(
         f"AUDIT absensi.hapus record_id={record_id} ({jejak}) "
-        f"oleh guru_id={guru.id} ({guru.email}) pada {datetime.utcnow().isoformat()}"
+        f"oleh guru_id={guru.id} ({guru.email}) pada {utcnow().isoformat()}"
     )
     return {"status": "ok", "record_id": record_id}
 
@@ -293,6 +300,7 @@ def list_absensi(
     q = (
         db.query(Absensi, Siswa)
         .join(Siswa, Siswa.id == Absensi.siswa_id)
+        .options(joinedload(Siswa.kelas_rel))  # hindari N+1 saat baca siswa.kelas
     )
 
     if wali_kelas_ids is not None:

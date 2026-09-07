@@ -1,6 +1,7 @@
+from collections import defaultdict
 from typing import Optional, Literal
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -34,17 +35,27 @@ class GuruOut(BaseModel):
     wali_kelas: list[str] = []
     aktif: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
-def _serialize_guru(db: Session, g: Guru) -> dict:
+def _wali_by_guru(db: Session) -> dict[int, list[str]]:
+    """{guru_id: [nama kelas yang diampu]} dalam satu query."""
+    out: dict[int, list[str]] = defaultdict(list)
+    for wali_id, nama in db.query(Kelas.wali_id, Kelas.nama).filter(Kelas.wali_id.isnot(None)).all():
+        out[wali_id].append(nama)
+    return out
+
+
+def _serialize_guru(db: Session, g: Guru, wali_map: dict[int, list[str]] | None = None) -> dict:
+    wali = wali_map.get(g.id, []) if wali_map is not None else [
+        n for (n,) in db.query(Kelas.nama).filter(Kelas.wali_id == g.id).all()
+    ]
     return {
         "id": g.id,
         "nama": g.nama,
         "email": g.email,
         "role": g.role,
-        "wali_kelas": [k.nama for k in db.query(Kelas.nama).filter(Kelas.wali_id == g.id).all()],
+        "wali_kelas": wali,
         "aktif": g.aktif,
     }
 
@@ -61,7 +72,8 @@ def list_guru(
         q = q.filter(Guru.role == role)
     if aktif is not None:
         q = q.filter(Guru.aktif == aktif)
-    return [_serialize_guru(db, g) for g in q.order_by(Guru.nama).all()]
+    wali_map = _wali_by_guru(db)
+    return [_serialize_guru(db, g, wali_map) for g in q.order_by(Guru.nama).all()]
 
 
 @router.post("", response_model=GuruOut)

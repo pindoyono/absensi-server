@@ -30,6 +30,10 @@ Alasan:
    API key tidak terekspos di jaringan.
 2. **API key sudah disimpan sebagai hash.** Server hanya menyimpan `SHA-256(api_key)`
    di kolom `device.api_key_hash` — kebocoran database tidak membocorkan key mentah.
+   Salinan plaintext sementara (`device.raw_api_key`, dipakai untuk provisioning QR
+   & tampil di daftar device) **otomatis dihapus** begitu device berhasil
+   autentikasi pertama kali (atau selesai `POST /device/claim`). Setelah itu key
+   hanya bisa didapat lagi lewat `POST /device/{id}/regenerate-key`.
 3. **Skema signing client tidak terdokumentasi di repo ini.** Client mengirim
    `X-Signature` dari `_add_auth_headers` (lihat `PRD_JADWAL_OVERRIDE_DEVICE.md` §6.3),
    tetapi string yang di-sign, format timestamp, dan key-nya hanya ada di repo
@@ -707,6 +711,7 @@ perlu** memakainya — kontrak kiosk tetap berbasis nama kelas (lihat bagian 3).
 |---|---|---|
 | Device belum terdaftar/dinonaktifkan | 401 | Tampilkan pesan ke admin, hentikan sync sampai device didaftarkan ulang |
 | API key device salah | 401 | Sama seperti di atas — jangan retry otomatis tanpa batas |
+| Terlalu banyak `POST /auth/login/google` atau `POST /device/claim` (20/menit per IP) | 429 | Tunggu sesuai header `Retry-After` (detik) sebelum mencoba lagi. Hanya kedua endpoint itu yang di-rate-limit; sync/embeddings/health tidak. |
 | Siswa tidak ditemukan (enroll ke siswa_id invalid) | 404 | Sinkronkan ulang data siswa dari server |
 | Server tidak terjangkau (timeout/connection error) | — | Ini kondisi **offline normal**, bukan error aplikasi — simpan lokal, retry nanti sesuai desain offline-first |
 

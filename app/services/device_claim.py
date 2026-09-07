@@ -12,19 +12,19 @@ Token disimpan plaintext di kolom `device.claim_token` (setara `raw_api_key`
 yang memang sudah plaintext di desain ini) tapi berumur pendek & langsung
 hangus setelah dipakai.
 
-Waktu: `claim_token_expires` disimpan sebagai **UTC naive** (konsisten dengan
-`datetime.utcnow()` yang dipakai kolom timestamp lain di codebase — mis.
-`device.last_seen_at`, `absensi.approved_at`, `exp` JWT). JANGAN pakai
-`app/services/waktu` di sini: itu untuk tanggal bisnis (WITA), bukan timestamp.
-Kolom `DateTime` polos + Postgres session UTC akan menyimpan datetime aware
-sebagai UTC lalu membuang tz-nya — mencampur aware `sekarang()` (WITA) dengan
-kolom naik itu bikin token seolah "kedaluwarsa" seketika.
+Waktu: `claim_token_expires` disimpan sebagai **UTC naive** — pakai
+`waktu.utcnow()` (BUKAN `waktu.sekarang()`/`hari_ini()` yang WITA-aware, itu
+untuk tanggal bisnis). Kolom `DateTime` polos + Postgres session UTC akan
+menyimpan datetime aware sebagai UTC lalu membuang tz-nya; mencampur aware
+`sekarang()` (WITA) dengan kolom naive itu bikin token seolah "kedaluwarsa"
+seketika.
 """
 import json
 import secrets
 from datetime import datetime, timedelta
 
 from app.config import settings
+from app.services.waktu import utcnow
 
 TTL_MENIT = 60
 PAYLOAD_VERSI = 1
@@ -33,7 +33,7 @@ PAYLOAD_VERSI = 1
 def buat_claim_token(device, *, ttl_menit: int = TTL_MENIT) -> tuple[str, datetime]:
     """Set token baru + kedaluwarsa pada `device` (belum commit). Return (token, expires_utc)."""
     token = secrets.token_urlsafe(32)
-    expires = datetime.utcnow() + timedelta(minutes=ttl_menit)
+    expires = utcnow() + timedelta(minutes=ttl_menit)
     device.claim_token = token
     device.claim_token_expires = expires
     return token, expires
@@ -53,4 +53,4 @@ def token_masih_berlaku(device) -> bool:
     exp = device.claim_token_expires
     if exp.tzinfo is not None:  # jaga-jaga kalau DB mengembalikan aware
         exp = exp.replace(tzinfo=None)
-    return exp > datetime.utcnow()
+    return exp > utcnow()

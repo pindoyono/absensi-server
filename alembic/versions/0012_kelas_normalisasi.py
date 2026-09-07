@@ -82,7 +82,7 @@ def upgrade():
     )
 
     # 7. buang kolom string lama
-    op.drop_index("idx_siswa_kelas", table_name="siswa")
+    op.execute("DROP INDEX IF EXISTS idx_siswa_kelas")
     op.drop_column("siswa", "kelas")
     op.drop_column("jadwal_standar", "kelas")
     op.drop_column("jadwal_override", "kelas")
@@ -93,7 +93,7 @@ def upgrade():
 
 
 def downgrade():
-    op.drop_index("ix_siswa_kelas_id", table_name="siswa")
+    op.execute("DROP INDEX IF EXISTS ix_siswa_kelas_id")
 
     op.add_column("guru", sa.Column("kelas_diampu", sa.String(length=20), nullable=True))
     op.add_column("jadwal_override", sa.Column("kelas", sa.String(length=20), nullable=True))

@@ -23,3 +23,14 @@ def sekarang() -> datetime:
 def hari_ini() -> date:
     """Tanggal hari ini menurut zona sekolah — pengganti `date.today()`."""
     return sekarang().date()
+
+
+def utcnow() -> datetime:
+    """UTC sekarang sebagai datetime NAIVE — pengganti `datetime.utcnow()`
+    yang deprecated (dijadwalkan dihapus di Python mendatang).
+
+    Kolom `DateTime` Postgres di proyek ini tanpa timezone, jadi semua
+    timestamp audit / `last_seen` / `synced_at` disimpan naive & konsisten
+    UTC. Jangan pakai `sekarang()` (WITA-aware) untuk kolom-kolom itu.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
