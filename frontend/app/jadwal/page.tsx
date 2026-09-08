@@ -324,6 +324,7 @@ export default function JadwalPage() {
                         </select>
                     </div>
                 </div>
+                <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                     <thead>
                         <tr className="border-b border-slate-200 text-xs uppercase text-slate-500">
@@ -434,6 +435,7 @@ export default function JadwalPage() {
                         })}
                     </tbody>
                 </table>
+                </div>
             </div>
 
             {/* Jadwal Override */}
@@ -452,6 +454,7 @@ export default function JadwalPage() {
                         <p className="text-xs mt-1">Klik "+ Tambah Override" untuk jadwal khusus</p>
                     </div>
                 ) : (
+                    <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead>
                             <tr className="border-b border-slate-200 text-xs uppercase text-slate-500">
@@ -511,6 +514,7 @@ export default function JadwalPage() {
                             })}
                         </tbody>
                     </table>
+                    </div>
                 )}
             </div>
 

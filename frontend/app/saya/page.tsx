@@ -114,7 +114,7 @@ export default function SayaPage() {
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
                 {riwayat.length === 0 ? (
                     <div className="py-12 text-center text-slate-500">
                         <p className="font-medium">Belum ada riwayat absensi</p>

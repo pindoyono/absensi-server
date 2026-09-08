@@ -19,36 +19,33 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="id" className="h-full antialiased">
       <body className={`${geistSans.variable} font-sans min-h-full flex flex-col bg-slate-50 text-slate-800`}>
         {/* Top Navbar */}
-        <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between h-16 items-center">
+            <div className="flex h-16 items-center gap-2 sm:gap-4">
+              {/* Menu: hamburger di mobile/tablet, link dropdown di desktop */}
+              <Nav />
+
               {/* Logo / Title */}
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">
+              <a href="/" className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 shrink-0 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">
                   S2
                 </div>
-                <div>
-                  <h1 className="text-base font-bold text-slate-900 leading-tight">Absensi Admin</h1>
-                  <p className="text-xs text-slate-500">SMKN 2 Malinau</p>
+                <div className="min-w-0 leading-tight">
+                  <h1 className="text-sm sm:text-base font-bold text-slate-900 truncate">Absensi Admin</h1>
+                  <p className="text-xs text-slate-500 truncate hidden sm:block">SMKN 2 Malinau</p>
                 </div>
-              </div>
+              </a>
 
-              {/* Navigation Links — penuh untuk guru/admin, dipangkas untuk siswa (lihat components/Nav.tsx) */}
-              <Nav variant="desktop" />
+              <div className="flex-1" />
 
               {/* User Menu */}
-              <div className="flex items-center gap-2">
-                <UserMenu />
-              </div>
+              <UserMenu />
             </div>
           </div>
         </header>
 
-        {/* Mobile Subnav */}
-        <Nav variant="mobile" />
-
         {/* Main Content Area */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
           {children}
         </main>
 

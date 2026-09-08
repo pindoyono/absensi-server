@@ -190,7 +190,7 @@ export default function GuruPage() {
                 <div className="p-3 bg-rose-50 text-rose-700 rounded-lg border border-rose-200 text-sm">{error}</div>
             )}
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
                 <table className="min-w-full text-sm">
                     <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">

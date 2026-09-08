@@ -149,7 +149,7 @@ export default function KonsentrasiPage() {
     const filteredKonsentrasiList = filterProgram ? konsentrasiList.filter(k => k.program_id === filterProgram) : filterBidang ? konsentrasiList.filter(k => filteredProgramList.some(p => p.id === k.program_id)) : konsentrasiList;
 
     return (
-        <div className="max-w-6xl mx-auto px-4 py-8">
+        <div>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Manajemen Spektrum Keahlian</h1>
@@ -198,8 +198,8 @@ export default function KonsentrasiPage() {
                 <>
                     {/* Bidang table */}
                     {tab === "bidang" && (
-                        <div className="bg-white rounded-xl border overflow-hidden">
-                            <table className="w-full text-sm">
+                        <div className="bg-white rounded-xl border overflow-x-auto">
+                            <table className="w-full min-w-[36rem] text-sm">
                                 <thead className="bg-gray-50">
                                     <tr>
                                         <th className="text-left px-4 py-3 font-medium text-gray-500">Kode</th>
@@ -231,8 +231,8 @@ export default function KonsentrasiPage() {
 
                     {/* Program table */}
                     {tab === "program" && (
-                        <div className="bg-white rounded-xl border overflow-hidden">
-                            <table className="w-full text-sm">
+                        <div className="bg-white rounded-xl border overflow-x-auto">
+                            <table className="w-full min-w-[36rem] text-sm">
                                 <thead className="bg-gray-50">
                                     <tr>
                                         <th className="text-left px-4 py-3 font-medium text-gray-500">Kode</th>
@@ -267,8 +267,8 @@ export default function KonsentrasiPage() {
 
                     {/* Konsentrasi table */}
                     {tab === "konsentrasi" && (
-                        <div className="bg-white rounded-xl border overflow-hidden">
-                            <table className="w-full text-sm">
+                        <div className="bg-white rounded-xl border overflow-x-auto">
+                            <table className="w-full min-w-[36rem] text-sm">
                                 <thead className="bg-gray-50">
                                     <tr>
                                         <th className="text-left px-4 py-3 font-medium text-gray-500">Kode</th>
