@@ -297,7 +297,14 @@ def claim_device(body: ClaimIn, db: Session = Depends(get_db)):
     if not device or not device_claim.token_masih_berlaku(device):
         raise HTTPException(status_code=404, detail="Token tidak valid atau sudah kedaluwarsa")
 
+    # `raw_api_key` bisa sudah NULL: device pernah auth sukses (auth.py / device_auth
+    # mengosongkannya), pernah di-claim sebelumnya, atau QR ini di-generate ulang
+    # lewat GET /device/{id}/claim-qr tanpa menyentuh key. Claim = device
+    # (re)provisioning, jadi putar key baru — key lama otomatis tak berlaku.
     api_key = device.raw_api_key
+    if not api_key:
+        api_key = secrets.token_urlsafe(32)
+        device.api_key_hash = hash_api_key(api_key)
     device.claim_token = None
     device.claim_token_expires = None
     # Kiosk sekarang menyimpan api_key-nya sendiri — server tak perlu lagi

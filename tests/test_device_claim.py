@@ -97,6 +97,28 @@ def test_claim_tukar_token_jadi_kredensial_lalu_hangus(client, db_session):
     assert client.post("/device/claim", json={"token": token}).status_code == 404
 
 
+def test_claim_saat_raw_api_key_sudah_null_putar_key_baru(client, db_session):
+    """Regresi HTTP 500: device yang pernah auth/claim punya `raw_api_key = NULL`.
+    Scan QR baru (re-provisioning) harus tetap 200 dengan api_key baru yang valid,
+    bukan ResponseValidationError karena api_key None."""
+    from app.services.device_auth import verify_api_key
+
+    d = db_session.query(models.Device).filter_by(device_id="kiosk-1").one()
+    d.raw_api_key = None  # seperti setelah device auth sukses / claim pertama
+    db_session.commit()
+
+    token = client.get("/device/kiosk-1/claim-qr", headers=_admin()).json()["token"]
+    r = client.post("/device/claim", json={"token": token})
+    assert r.status_code == 200, r.text
+    api_key_baru = r.json()["api_key"]
+    assert api_key_baru
+
+    db_session.expire_all()
+    d = db_session.query(models.Device).filter_by(device_id="kiosk-1").one()
+    assert d.raw_api_key is None  # tetap tak disimpan plaintext
+    assert verify_api_key(api_key_baru, d.api_key_hash)  # key baru benar-benar dipakai
+
+
 def test_claim_token_ngawur_ditolak(client):
     assert client.post("/device/claim", json={"token": "bukan-token"}).status_code == 404
     assert client.post("/device/claim", json={"token": ""}).status_code == 400

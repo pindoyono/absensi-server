@@ -126,6 +126,10 @@ Setelah berhasil, token **langsung hangus** (percobaan kedua → `404`). Token
 kedaluwarsa / tidak dikenal → `404`; body tanpa token → `400`. Server
 meng-audit-log tiap `claim-qr` dan `claim`.
 
+`api_key` di response **selalu terisi**: kalau salinan plaintext device sudah
+dihapus (device pernah auth / pernah di-claim), `claim` otomatis memutar key
+baru — jadi scan QR = re-provisioning penuh dan key lama langsung tak berlaku.
+
 ### 1.1b Ubah metadata device (admin)
 
 ```
