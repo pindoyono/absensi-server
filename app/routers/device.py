@@ -29,6 +29,7 @@ class DeviceUpdateIn(BaseModel):
     Semua opsional — hanya yang dikirim yang diubah."""
     nama_lokasi: str | None = None
     platform: str | None = None  # 'windows' | 'android'
+    izin_enroll_mandiri: bool | None = None
 
 
 class DeviceOut(BaseModel):
@@ -36,6 +37,7 @@ class DeviceOut(BaseModel):
     nama_lokasi: str
     platform: str
     aktif: bool
+    izin_enroll_mandiri: bool = False
     last_seen_at: datetime | None = None
     dibuat_pada: datetime | None = None
     raw_api_key: str | None = None
@@ -242,12 +244,14 @@ def update_device(
         if body.platform not in ("windows", "android"):
             raise HTTPException(status_code=422, detail="platform harus 'windows' atau 'android'")
         device.platform = body.platform
+    if body.izin_enroll_mandiri is not None:
+        device.izin_enroll_mandiri = body.izin_enroll_mandiri
 
     db.commit()
     db.refresh(device)
     print(
-        f"AUDIT device.update device_id={device_id} oleh guru_id={guru.id} "
-        f"({guru.email}) pada {utcnow().isoformat()}"
+        f"AUDIT device.update device_id={device_id} izin_enroll_mandiri={device.izin_enroll_mandiri} "
+        f"oleh guru_id={guru.id} ({guru.email}) pada {utcnow().isoformat()}"
     )
     return device
 
@@ -466,9 +470,15 @@ def report_device_health(
     device.dispensasi_jam_lalu = body.dispensasi_jam_lalu
     device.health_dilaporkan_pada = utcnow()
     db.commit()
-    # nama_lokasi + platform dikembalikan supaya kiosk bisa menyegarkan
-    # metadata lokalnya tiap siklus sync (admin bisa ubah lewat PATCH /device/{id}).
-    return {"status": "ok", "nama_lokasi": device.nama_lokasi, "platform": device.platform}
+    # nama_lokasi + platform + izin_enroll_mandiri dikembalikan supaya kiosk
+    # menyegarkan metadata lokalnya tiap siklus sync (admin bisa ubah lewat
+    # PATCH /device/{id}).
+    return {
+        "status": "ok",
+        "nama_lokasi": device.nama_lokasi,
+        "platform": device.platform,
+        "izin_enroll_mandiri": device.izin_enroll_mandiri,
+    }
 
 
 @router.get("/status-kesehatan")

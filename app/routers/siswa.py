@@ -1,3 +1,4 @@
+import base64
 import csv
 import io
 from datetime import date, datetime
@@ -40,6 +41,7 @@ class SiswaOut(BaseModel):
     jurusan: str
     konsentrasi_id: Optional[int] = None
     enrolled: bool
+    enroll_mandiri_pending: bool = False
     tanggal_enrollment: Optional[date] = None
     email: Optional[str] = None
 
@@ -68,6 +70,11 @@ class EnrollRequest(BaseModel):
     """
     embedding: list[float] = Field(..., min_length=64, description="Vector embedding wajah dari engine client")
     model_version: str = Field(..., description="misal 'minifasnet-v1' — dicatat untuk audit kompatibilitas model")
+    # Daftar wajah MANDIRI oleh siswa sendiri (bukan operator/guru). Wajib
+    # device-auth + device.izin_enroll_mandiri. `foto_jpeg` (base64) disimpan
+    # sebagai bukti untuk admin verifikasi; absensi ditolak sampai dikonfirmasi.
+    mandiri: bool = False
+    foto_jpeg: Optional[str] = Field(default=None, description="Foto capture (base64 JPEG) — wajib bila mandiri=True")
 
     model_config = {"protected_namespaces": ()}
 
@@ -373,6 +380,15 @@ def enroll_siswa(
     if not is_device and auth.role not in ("admin", "guru_piket"):
         raise HTTPException(status_code=403, detail=f"Role '{auth.role}' tidak boleh enroll")
 
+    if body.mandiri:
+        # Daftar wajah mandiri: WAJIB device-auth + device diizinkan admin.
+        if not is_device:
+            raise HTTPException(status_code=403, detail="Daftar mandiri hanya dari kiosk (device-auth)")
+        if not auth.izin_enroll_mandiri:
+            raise HTTPException(status_code=403, detail="Device ini tidak diizinkan untuk daftar wajah mandiri")
+        if not body.foto_jpeg:
+            raise HTTPException(status_code=422, detail="foto_jpeg wajib diisi untuk daftar mandiri")
+
     siswa = db.query(Siswa).filter(Siswa.id == siswa_id, Siswa.aktif == True).first()
     if not siswa:
         raise HTTPException(status_code=404, detail="Siswa tidak ditemukan")
@@ -398,11 +414,114 @@ def enroll_siswa(
     else:
         siswa.enrolled_oleh = auth.id
 
+    if body.mandiri:
+        import base64
+        try:
+            siswa.enroll_foto = base64.b64decode(body.foto_jpeg, validate=True)
+        except Exception:
+            raise HTTPException(status_code=422, detail="foto_jpeg bukan base64 valid")
+        siswa.enroll_mandiri_pending = True
+    else:
+        # Enroll oleh guru/operator = langsung tepercaya, batalkan status pending
+        # + buang foto lama bila ada.
+        siswa.enroll_mandiri_pending = False
+        siswa.enroll_foto = None
+
     db.commit()
     return {
         "status": "ok", "siswa_id": siswa_id, "enrolled": True,
         "sumber": "device" if is_device else "guru",
+        "menunggu_verifikasi": bool(body.mandiri),
     }
+
+
+@router.get("/enroll-mandiri/pending")
+def daftar_enroll_mandiri_pending(
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin", "guru_piket")),
+):
+    """Siswa yang baru daftar wajah SENDIRI dan menunggu verifikasi admin.
+    `foto_jpeg` = foto capture saat daftar (base64) untuk dicocokkan admin."""
+    rows = (
+        db.query(Siswa)
+        .options(joinedload(Siswa.kelas_rel))
+        .filter(Siswa.enroll_mandiri_pending == True, Siswa.aktif == True)
+        .order_by(Siswa.tanggal_enrollment.desc(), Siswa.nama)
+        .all()
+    )
+    return [
+        {
+            "siswa_id": s.id,
+            "nis": s.nis,
+            "nama": s.nama,
+            "kelas": s.kelas,
+            "tanggal_enrollment": s.tanggal_enrollment,
+            "enrolled_device_id": s.enrolled_device_id,
+            "foto_jpeg": base64.b64encode(s.enroll_foto).decode() if s.enroll_foto else None,
+        }
+        for s in rows
+    ]
+
+
+@router.post("/{siswa_id}/enroll-mandiri/konfirmasi")
+def konfirmasi_enroll_mandiri(
+    siswa_id: int,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin", "guru_piket")),
+):
+    """Admin membenarkan foto = orangnya. Siswa langsung bisa absen, foto dibuang."""
+    siswa = db.query(Siswa).filter(Siswa.id == siswa_id).first()
+    if not siswa:
+        raise HTTPException(status_code=404, detail="Siswa tidak ditemukan")
+    if not siswa.enroll_mandiri_pending:
+        raise HTTPException(status_code=409, detail="Siswa ini tidak sedang menunggu verifikasi")
+    siswa.enroll_mandiri_pending = False
+    siswa.enroll_foto = None
+    siswa.enrolled_oleh = guru.id  # dicatat: admin yang memverifikasi
+    # Bump embedding supaya kiosk yang sync incremental menerima status baru
+    # (enroll_mandiri_pending=false) pada siklus berikutnya.
+    emb = db.query(FaceEmbedding).filter(FaceEmbedding.siswa_id == siswa_id).first()
+    if emb:
+        emb.diperbarui_pada = utcnow()
+    db.commit()
+    print(
+        f"AUDIT siswa.enroll_mandiri.konfirmasi siswa_id={siswa_id} nis={siswa.nis} "
+        f"oleh guru_id={guru.id} ({guru.email}) pada {utcnow().isoformat()}"
+    )
+    return {"status": "ok", "siswa_id": siswa_id, "enroll_mandiri_pending": False}
+
+
+@router.post("/{siswa_id}/enroll-mandiri/tolak")
+def tolak_enroll_mandiri(
+    siswa_id: int,
+    db: Session = Depends(get_db),
+    guru: Guru = Depends(require_role("admin", "guru_piket")),
+):
+    """Admin menolak (foto bukan orangnya). Embedding + foto dihapus, siswa
+    harus daftar ulang."""
+    siswa = db.query(Siswa).filter(Siswa.id == siswa_id).first()
+    if not siswa:
+        raise HTTPException(status_code=404, detail="Siswa tidak ditemukan")
+    if not siswa.enroll_mandiri_pending:
+        raise HTTPException(status_code=409, detail="Siswa ini tidak sedang menunggu verifikasi")
+
+    emb = db.query(FaceEmbedding).filter(FaceEmbedding.siswa_id == siswa_id).first()
+    if emb:
+        # Tandai dulu (bump) supaya kiosk menghapus cache lokal, LALU hapus baris.
+        emb.diperbarui_pada = utcnow()
+        db.flush()
+        db.delete(emb)
+    siswa.enroll_mandiri_pending = False
+    siswa.enroll_foto = None
+    siswa.enrolled = False
+    siswa.tanggal_enrollment = None
+    siswa.enrolled_device_id = None
+    db.commit()
+    print(
+        f"AUDIT siswa.enroll_mandiri.tolak siswa_id={siswa_id} nis={siswa.nis} "
+        f"oleh guru_id={guru.id} ({guru.email}) pada {utcnow().isoformat()}"
+    )
+    return {"status": "ok", "siswa_id": siswa_id, "enrolled": False}
 
 
 @router.get("/enrollment-progress")

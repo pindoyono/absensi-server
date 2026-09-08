@@ -47,9 +47,12 @@ CREATE TABLE siswa (
     enrolled BOOLEAN DEFAULT false,
     tanggal_enrollment DATE,
     enrolled_oleh INT REFERENCES guru(id),
+    enroll_mandiri_pending BOOLEAN NOT NULL DEFAULT false,  -- daftar wajah sendiri, tunggu verifikasi admin
+    enroll_foto BYTEA,                      -- foto capture daftar mandiri (dihapus setelah dikonfirmasi/ditolak)
     aktif BOOLEAN DEFAULT true,             -- false kalau siswa pindah/lulus
     dibuat_pada TIMESTAMP DEFAULT now()
 );
+-- catatan: enrolled_device_id + kolom lain ditambah lewat migrasi Alembic.
 
 CREATE INDEX ix_siswa_kelas_id ON siswa(kelas_id);
 CREATE INDEX idx_siswa_enrolled ON siswa(enrolled) WHERE enrolled = false;
@@ -108,6 +111,7 @@ CREATE TABLE device (
     claim_token VARCHAR(64),                -- token QR provisioning sekali-pakai (POST /device/claim)
     claim_token_expires TIMESTAMP,
     last_seen_at TIMESTAMP,
+    izin_enroll_mandiri BOOLEAN NOT NULL DEFAULT false,  -- device boleh dipakai siswa daftar wajah sendiri
     aktif BOOLEAN DEFAULT true,
     dibuat_pada TIMESTAMP DEFAULT now()
 );

@@ -307,6 +307,28 @@ Alur di client saat proses enrollment (lihat detail lengkap di dokumen arsitektu
 
 ✅ Sudah diuji: endpoint enroll berhasil menyimpan embedding terenkripsi dan set `enrolled=true`.
 
+### 2a. Daftar Wajah MANDIRI (siswa sendiri di kiosk)
+
+Siswa bisa mendaftarkan wajahnya sendiri (login NIS di kiosk → "Daftar Wajah Saya"),
+tapi HANYA di device yang diizinkan admin, dan hasilnya menunggu verifikasi.
+
+- **Izin per device**: `device.izin_enroll_mandiri` (bool, default `false`).
+  Admin set lewat `PATCH /device/{id}` `{"izin_enroll_mandiri": true}`.
+  `POST /device/{id}/health` response memuat `izin_enroll_mandiri` — kiosk pakai
+  untuk menampilkan/menyembunyikan tombol "Daftar Wajah Saya".
+- **Daftar**: `POST /siswa/{id}/enroll` body tambah `{"mandiri": true, "foto_jpeg": "<base64 JPEG>"}`.
+  Wajib device-auth + `device.izin_enroll_mandiri`. Server simpan embedding + foto,
+  set `siswa.enroll_mandiri_pending = true`. Response `{"menunggu_verifikasi": true}`.
+- **Selama pending**: `GET /embeddings/sync` tetap mengirim embedding siswa itu
+  dengan `"enroll_mandiri_pending": true`; `POST /absensi/sync` **menolak** record
+  siswa itu (status `ditolak_kebijakan`, pesan "menunggu verifikasi admin").
+- **Verifikasi admin** (JWT admin/guru_piket):
+  - `GET /siswa/enroll-mandiri/pending` → `[{siswa_id, nis, nama, kelas, tanggal_enrollment, enrolled_device_id, foto_jpeg}]`
+  - `POST /siswa/{id}/enroll-mandiri/konfirmasi` → `pending=false`, foto dihapus, siswa bisa absen
+  - `POST /siswa/{id}/enroll-mandiri/tolak` → embedding + foto dihapus, `enrolled=false`, siswa harus daftar ulang
+- Enroll oleh **guru/operator** (JWT, tanpa `mandiri`) atas siswa yang sedang pending →
+  langsung membatalkan status pending (dianggap tepercaya).
+
 ---
 
 ## 3. Sync Embedding ke Cache Lokal Client
@@ -333,6 +355,7 @@ Response:
       "kelas": "XI Elektronika",
       "kelas_id": 4,
       "aktif": true,
+      "enroll_mandiri_pending": false,
       "embedding_encrypted": "gAAAAABm...(hex string)",
       "model_version": "minifasnet-v1",
       "diperbarui_pada": "2026-08-20T08:00:00"

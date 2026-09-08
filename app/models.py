@@ -65,6 +65,13 @@ class Siswa(Base):
     # Diisi bila enrollment dilakukan dari kiosk (device-auth), bukan guru via dashboard.
     # PRD_DUKUNGAN_CLIENT_ANDROID.md R-P1-4. enrolled_oleh = NULL saat sumber = device.
     enrolled_device_id = Column(String(50))
+    # Daftar wajah MANDIRI (siswa sendiri di kiosk yang diizinkan) — menunggu
+    # konfirmasi admin. True = embedding sudah tersimpan tapi absensi DITOLAK
+    # sampai admin memverifikasi `enroll_foto` cocok dengan orangnya.
+    enroll_mandiri_pending = Column(Boolean, nullable=False, default=False, server_default=expression.false())
+    # Foto wajah saat daftar mandiri (JPEG) — bukti untuk admin verifikasi.
+    # DIHAPUS (set NULL) setelah dikonfirmasi/ditolak supaya tidak menumpuk.
+    enroll_foto = Column(LargeBinary, nullable=True)
     aktif = Column(Boolean, default=True)
     dibuat_pada = Column(DateTime, server_default=func.now())
 
@@ -105,6 +112,10 @@ class Device(Base):
     raw_api_key = Column(String(200), nullable=True)
     last_seen_at = Column(DateTime)
     aktif = Column(Boolean, default=True)
+    # True = device ini boleh dipakai siswa untuk daftar wajah SENDIRI
+    # (login NIS di kiosk → "Daftar Wajah Saya"). Opt-in per device, diatur
+    # admin lewat PATCH /device/{id}. Hasil daftar tetap menunggu verifikasi.
+    izin_enroll_mandiri = Column(Boolean, nullable=False, default=False, server_default=expression.false())
     dibuat_pada = Column(DateTime, server_default=func.now())
 
     # PRD-observability-degradasi-offline-first §5.1: kesegaran data yang

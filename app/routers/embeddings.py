@@ -57,6 +57,9 @@ def sync_embeddings(
             "kelas": siswa.kelas,  # nama rombel (property) — kontrak kiosk tak berubah
             "kelas_id": siswa.kelas_id,
             "aktif": siswa.aktif,
+            # True = siswa baru daftar wajah SENDIRI, menunggu verifikasi admin.
+            # Kiosk boleh cache embedding-nya tapi TOLAK absensi sampai false.
+            "enroll_mandiri_pending": siswa.enroll_mandiri_pending,
             "embedding_encrypted": emb.embedding_encrypted.hex(),  # hex agar aman di JSON
             "model_version": emb.model_version,
             "diperbarui_pada": emb.diperbarui_pada,

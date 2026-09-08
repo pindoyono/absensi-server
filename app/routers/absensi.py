@@ -118,8 +118,9 @@ def sync_absensi(
     # umumnya dari satu kiosk. Kalau key salah, verify_device raise 401 dan
     # seluruh request gagal — sama seperti perilaku lama.
     device_terverifikasi: dict[str, Device] = {}
-    # Cache kelas_id per siswa supaya tidak query berulang dalam loop.
-    kelas_id_cache: dict[int, int | None] = {}
+    # Cache (kelas_id, enroll_mandiri_pending) per siswa supaya tidak query
+    # berulang dalam loop.
+    siswa_cache: dict[int, tuple] = {}
 
     for rec in body.records:
         if rec.device_id not in device_terverifikasi:
@@ -148,9 +149,24 @@ def sync_absensi(
             # PENTING: ambil kelas siswa yang SEBENARNYA -- jadwal bisa
             # berbeda per kelas (lihat JadwalStandar/JadwalOverride yang
             # punya kolom `kelas`), jangan selalu pakai jadwal sekolah-wide.
-            if rec.siswa_id not in kelas_id_cache:
-                kelas_id_cache[rec.siswa_id] = db.query(Siswa.kelas_id).filter(Siswa.id == rec.siswa_id).scalar()
-            jadwal_efektif = _ambil_jadwal_efektif(db, kelas_id_cache[rec.siswa_id], rec.tanggal)
+            if rec.siswa_id not in siswa_cache:
+                siswa_cache[rec.siswa_id] = (
+                    db.query(Siswa.kelas_id, Siswa.enroll_mandiri_pending)
+                    .filter(Siswa.id == rec.siswa_id).first()
+                ) or (None, False)
+            kelas_id_siswa, enroll_pending = siswa_cache[rec.siswa_id]
+
+            # Daftar wajah mandiri belum diverifikasi admin → tolak absensi.
+            if enroll_pending:
+                savepoint.rollback()
+                hasil.append(SyncResultItem(
+                    record_id=rec.record_id,
+                    status="ditolak_kebijakan",
+                    pesan="Daftar wajah menunggu verifikasi admin — belum bisa absen",
+                ))
+                continue
+
+            jadwal_efektif = _ambil_jadwal_efektif(db, kelas_id_siswa, rec.tanggal)
             if jadwal_efektif:
                 penolakan = _validasi_jendela_waktu(db, rec, jadwal_efektif)
                 if penolakan:
