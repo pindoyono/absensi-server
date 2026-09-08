@@ -18,6 +18,7 @@ interface Device {
     nama_lokasi: string | null;
     platform: string | null;
     aktif: boolean;
+    izin_enroll_mandiri: boolean;
     last_seen_at: string | null;
     dibuat_pada: string | null;
     raw_api_key: string | null;
@@ -217,6 +218,26 @@ export default function DevicePage() {
         }
     };
 
+    const handleToggleEnrollMandiri = async (device_id: string, next: boolean) => {
+        if (!token) return;
+        setBusyId(device_id);
+        setError(null);
+        try {
+            const res = await fetch(`${API_BASE}/device/${device_id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ izin_enroll_mandiri: next }),
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(body?.detail ?? `HTTP ${res.status}`);
+            await loadDevices(token);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Gagal mengubah izin daftar mandiri");
+        } finally {
+            setBusyId(null);
+        }
+    };
+
     const handleUpdateNama = async (device_id: string) => {
         if (!token) return;
         const nama = editNamaValue.trim();
@@ -394,6 +415,7 @@ export default function DevicePage() {
                                     <th className="py-3 px-4 text-left">Device Key</th>
                                     <th className="py-3 px-4 text-left">Lokasi</th>
                                     <th className="py-3 px-4 text-left">Platform</th>
+                                    <th className="py-3 px-4 text-left">Daftar Mandiri</th>
                                     <th className="py-3 px-4 text-left">Status</th>
                                     <th className="py-3 px-4 text-left">Terakhir Terlihat</th>
                                     <th className="py-3 px-4 text-left">Kesegaran Data</th>
@@ -466,6 +488,21 @@ export default function DevicePage() {
                                         </td>
                                         <td className="py-3 px-4">
                                             <Badge variant="default">{d.platform || "-"}</Badge>
+                                        </td>
+                                        <td className="py-3 px-4">
+                                            <button
+                                                type="button"
+                                                disabled={busyId === d.device_id}
+                                                onClick={() => handleToggleEnrollMandiri(d.device_id, !d.izin_enroll_mandiri)}
+                                                title="Izinkan siswa daftar wajah sendiri di device ini"
+                                                className={`text-xs px-2 py-1 rounded-full font-medium disabled:opacity-50 ${
+                                                    d.izin_enroll_mandiri
+                                                        ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                                                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                                }`}
+                                            >
+                                                {d.izin_enroll_mandiri ? "✓ Diizinkan" : "Nonaktif"}
+                                            </button>
                                         </td>
                                         <td className="py-3 px-4">
                                             <Badge variant={d.aktif ? "success" : "danger"}>

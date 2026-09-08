@@ -19,6 +19,7 @@ const NAV_STAF: NavLink[] = [
     { href: "/jadwal", label: "Jadwal" },
     { href: "/dispensasi", label: "Dispensasi" },
     { href: "/absensi", label: "Absensi" },
+    { href: "/verifikasi-wajah", label: "Verifikasi Wajah" },
     { href: "/laporan", label: "Laporan" },
     { href: "/device", label: "Device" },
     { href: "/status-device", label: "Status Device" },
